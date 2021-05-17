@@ -96,6 +96,25 @@ function encodeValue(bind: IFluidHandle, value: any) {
         : value;
 }
 
+interface IDecodeValueContext {
+    root: IFluidHandleContext,
+    context: IFluidHandleContext,
+}
+
+function decodeValue({ context, root }: IDecodeValueContext, value: any) {
+    if (!isSerializedHandle(value)) {
+        return value;
+    }
+
+    // Old documents may have handles with relative path in their summaries. Convert these to absolute
+    // paths. This will ensure that future summaries will have absolute paths for these handles.
+    const absolutePath = value.url.startsWith("/")
+        ? value.url
+        : generateHandleContextPath(value.url, context);
+
+    return new RemoteFluidObjectHandle(absolutePath, root);
+}
+
 /**
  * Data Store serializer implementation
  */
@@ -111,20 +130,6 @@ export class FluidSerializer implements IFluidSerializer {
 
     public get IFluidSerializer() { return this; }
 
-    private decodeValue(value: any) {
-        if (!isSerializedHandle(value)) {
-            return value;
-        }
-
-        // Old documents may have handles with relative path in their summaries. Convert these to absolute
-        // paths. This will ensure that future summaries will have absolute paths for these handles.
-        const absolutePath = value.url.startsWith("/")
-            ? value.url
-            : generateHandleContextPath(value.url, this.context);
-
-        return new RemoteFluidObjectHandle(absolutePath, this.root);
-    }
-
     /**
      * Given a mostly-jsonable object that may have handle objects embedded within, will return a fully-jsonable object
      * where any embedded IFluidHandles have been replaced with a serializable form.
@@ -134,7 +139,7 @@ export class FluidSerializer implements IFluidSerializer {
      */
     public replaceHandles(input: any, bind: IFluidHandle) {
         // If the given 'input' cannot contain handles, return it immediately.  Otherwise,
-        // return the result of recursively replacing handles with thier encoded form.
+        // return the result of recursively replacing handles with their encoded form.
         // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
         return !!input && typeof input === "object"
             ? recursivelyReplace(bind, input, encodeValue)
@@ -150,7 +155,10 @@ export class FluidSerializer implements IFluidSerializer {
 
     // Parses the serialized data - context must match the context with which the JSON was stringified
     public parse(input: string) {
-        return JSON.parse(input, (key, value) => this.decodeValue(value));
+        return JSON.parse(input, (key, value) => decodeValue(
+            this as unknown as IDecodeValueContext,     // Cast is to expose private members 'root' and 'context'.
+            value,
+        ));
     }
 
     protected serializeHandle(handle: IFluidHandle, bind: IFluidHandle) {
