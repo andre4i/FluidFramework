@@ -3,6 +3,8 @@
  * Licensed under the MIT License.
  */
 
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+
 import {
     IFluidHandle,
     IFluidHandleContext,
@@ -11,6 +13,48 @@ import {
 import { RemoteFluidObjectHandle } from "./remoteObjectHandle";
 import { generateHandleContextPath } from "./dataStoreHandleContextUtils";
 import { isSerializedHandle } from "./utils";
+
+function recursivelyReplace(
+    input: any,
+    replacer: (input: any) => any,
+) {
+    // If the current input is an IFluidHandle instance, replace this leaf in the object graph with
+    // the handle's serialized from.
+    const result = replacer(input);
+
+    if (result !== input) {
+        return result;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/ban-types
+    let clone: object | undefined;
+    for (const key of Object.keys(input)) {
+        const value = input[key];
+        // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
+        if (!!value && typeof value === "object") {
+            // Note: `input` has either been replaced (above) or must not contain circular references (as
+            //       object must be JSON serializable.)  Therefore, guarding against infinite recursion here
+            //       would only lead to a later error when attempting to stringify().
+            const replaced = recursivelyReplace(value, replacer);
+
+            // If the `replaced` object is different than the original `value` then the subgraph contained one
+            // or more replacements.  If this happens, we need to return a clone of the `input` object where
+            // the current property is replaced by the `replaced` value.
+            if (replaced !== value) {
+                // Lazily create a shallow clone of the `input` object if we haven't done so already.
+                clone = clone ?? (Array.isArray(input)
+                    ? [...input]
+                    : { ...input });
+
+                // Overwrite the current property `key` in the clone with the `replaced` value.
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                clone![key] = replaced;
+            }
+        }
+    }
+
+    return clone ?? input;
+}
 
 /**
  * Data Store serializer implementation
@@ -27,96 +71,53 @@ export class FluidSerializer implements IFluidSerializer {
 
     public get IFluidSerializer() { return this; }
 
-    public replaceHandles(
-        input: any,
-        bind: IFluidHandle,
-    ) {
+    private encodeValue(value: any, bind: IFluidHandle) {
+        const handle = value.IFluidHandle;
+
+        return handle !== undefined
+            ? this.serializeHandle(handle, bind)
+            : value;
+    }
+
+    private decodeValue(value: any) {
+        if (!isSerializedHandle(value)) {
+            return value;
+        }
+
+        // Old documents may have handles with relative path in their summaries. Convert these to absolute
+        // paths. This will ensure that future summaries will have absolute paths for these handles.
+        const absolutePath = value.url.startsWith("/")
+            ? value.url
+            : generateHandleContextPath(value.url, this.context);
+        return new RemoteFluidObjectHandle(absolutePath, this.root);
+    }
+
+    /**
+     * Given a mostly-jsonable object that may have handle objects embedded within, will return a fully-jsonable object
+     * where any embedded IFluidHandles have been replaced with a serializable form.
+     *
+     * The original `input` object is not mutated.  This method will shallowly clones all objects in the path from
+     * the root to any replaced handles.  (If no handles are found, returns the original object.)
+     */
+    public replaceHandles(input: any, bind: IFluidHandle) {
         // If the given 'input' cannot contain handles, return it immediately.  Otherwise,
-        // return the result of 'recursivelyReplaceHandles()'.
-        // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions,@typescript-eslint/no-unsafe-return
+        // return the result of recursively replacing handles with thier encoded form.
+        // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
         return !!input && typeof input === "object"
-            ? this.recursivelyReplaceHandles(input, bind)
+            ? recursivelyReplace(input, (value) => this.encodeValue(value, bind))
             : input;
     }
 
     public stringify(input: any, bind: IFluidHandle) {
-        return JSON.stringify(input, (key, value) => {
-            // If the current 'value' is not a handle, return it unmodified.  Otherwise,
-            // return the result of 'serializeHandle'.
-            // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-            const handle = !!value && value.IFluidHandle;
-            // TODO - understand why handle === false in some of our tests
-            // eslint-disable-next-line max-len
-            // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions,@typescript-eslint/no-unsafe-return
-            return handle
-                ? this.serializeHandle(handle, bind)
-                : value;
-        });
+        return JSON.stringify(input,
+            (key, value) =>
+                // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
+                value && this.encodeValue(value, bind));
     }
 
     // Parses the serialized data - context must match the context with which the JSON was stringified
     public parse(input: string) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return JSON.parse(
-            input,
-            (key, value) => {
-                if (!isSerializedHandle(value)) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-                    return value;
-                }
-
-                // Old documents may have handles with relative path in their summaries. Convert these to absolute
-                // paths. This will ensure that future summaries will have absolute paths for these handles.
-                const absolutePath = value.url.startsWith("/")
-                    ? value.url
-                    : generateHandleContextPath(value.url, this.context);
-                return new RemoteFluidObjectHandle(absolutePath, this.root);
-            });
-    }
-
-    // Invoked by `replaceHandles()` for non-null objects to recursively replace IFluidHandle references
-    // with serialized handles (cloning as-needed to avoid mutating the original `input` object.)
-    private recursivelyReplaceHandles(
-        input: any,
-        bind: IFluidHandle,
-    ) {
-        // If the current input is an IFluidHandle instance, replace this leaf in the object graph with
-        // the handle's serialized from.
-
-        // Note: Caller is responsible for ensuring that `input` is a non-null object.
-        const handle = input.IFluidHandle;
-        if (handle !== undefined) {
-            return this.serializeHandle(handle, bind);
-        }
-
-        // eslint-disable-next-line @typescript-eslint/ban-types
-        let clone: object | undefined;
-        for (const key of Object.keys(input)) {
-            const value = input[key];
-            // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-            if (!!value && typeof value === "object") {
-                // Note: Except for IFluidHandle, `input` must not contain circular references (as object must
-                //       be JSON serializable.)  Therefore, guarding against infinite recursion here would only
-                //       lead to a later error when attempting to stringify().
-                const replaced = this.recursivelyReplaceHandles(value, bind);
-
-                // If the `replaced` object is different than the original `value` then the subgraph contained one
-                // or more handles.  If this happens, we need to return a clone of the `input` object where the
-                // current property is replaced by the `replaced` value.
-                if (replaced !== value) {
-                    // Lazily create a shallow clone of the `input` object if we haven't done so already.
-                    clone = clone ?? (Array.isArray(input)
-                        ? [...input]
-                        : { ...input });
-
-                    // Overwrite the current property `key` in the clone with the `replaced` value.
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    clone![key] = replaced;
-                }
-            }
-        }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return clone ?? input;
+        return JSON.parse(input, (key, value) => this.decodeValue(value));
     }
 
     protected serializeHandle(handle: IFluidHandle, bind: IFluidHandle) {
