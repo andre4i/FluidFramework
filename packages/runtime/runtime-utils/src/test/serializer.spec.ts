@@ -29,7 +29,7 @@ describe("FluidSerializer", () => {
 
         // Start with the various JSON-serializable types
         // eslint-disable-next-line no-null/no-null
-        const simple = [true, 1, "x", null, [], {}];
+        const simple = [false, true, 0, 1, "", "x", null, [], {}];
         // Add an object where each field references one of the JSON serializable types.
         simple.push(
             simple.reduce<any>(
