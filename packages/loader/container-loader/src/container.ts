@@ -1144,7 +1144,7 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
         // DeltaManager is resilient to this and will wait to start processing ops until after it is attached.
         if (loadMode.deltaConnection === undefined) {
             startConnectionP = this.connectToDeltaStream(connectionArgs);
-            startConnectionP.catch((error) => { });
+            startConnectionP.catch(() => { });
         }
 
         await this.connectStorageService();
@@ -1167,40 +1167,31 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
 
         // Initialize document details - if loading a snapshot use that - otherwise we need to wait on
         // the initial details
-        if (snapshot !== undefined) {
-            this._existing = true;
-            switch (loadMode.opsBeforeReturn) {
-                case undefined:
-                    if (loadMode.deltaConnection !== "none") {
-                        // Start prefetch, but not set opsBeforeReturnP - boot is not blocked by it!
-                        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                        this._deltaManager.preFetchOps(false);
-                    }
-                    break;
-                case "cached":
-                    opsBeforeReturnP = this._deltaManager.preFetchOps(true);
-                    // Keep going with fetching ops from storage once we have all cached ops in.
-                    // Ops processing will start once cached ops are in and and will stop when queue is empty
-                    // (which in most cases will happen when we are done processing cached ops)
+
+        assert(snapshot === undefined, "Using a legacy unsupported path, snapshot should be ");
+
+        this._existing = true;
+        switch (loadMode.opsBeforeReturn) {
+            case undefined:
+                if (loadMode.deltaConnection !== "none") {
+                    // Start prefetch, but not set opsBeforeReturnP - boot is not blocked by it!
                     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                    opsBeforeReturnP.then(async () => this._deltaManager.preFetchOps(false));
-                    break;
-                case "all":
-                    opsBeforeReturnP = this._deltaManager.preFetchOps(false);
-                    break;
-                default:
-                    unreachableCase(loadMode.opsBeforeReturn);
-            }
-        } else {
-            //
-            // THIS IS LEGACY PATH
-            //
-            if (startConnectionP === undefined) {
-                startConnectionP = this.connectToDeltaStream(connectionArgs);
-            }
-            // Intentionally don't .catch on this promise - we'll let any error throw below in the await.
-            const details = await startConnectionP;
-            this._existing = details.existing;
+                    this._deltaManager.preFetchOps(false);
+                }
+                break;
+            case "cached":
+                opsBeforeReturnP = this._deltaManager.preFetchOps(true);
+                // Keep going with fetching ops from storage once we have all cached ops in.
+                // Ops processing will start once cached ops are in and and will stop when queue is empty
+                // (which in most cases will happen when we are done processing cached ops)
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                opsBeforeReturnP.then(async () => this._deltaManager.preFetchOps(false));
+                break;
+            case "all":
+                opsBeforeReturnP = this._deltaManager.preFetchOps(false);
+                break;
+            default:
+                unreachableCase(loadMode.opsBeforeReturn);
         }
 
         // LoadContext directly requires protocolHandler to be ready, and eventually calls
@@ -1430,7 +1421,7 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
         });
 
         // Track membership changes and update connection state accordingly
-        protocol.quorum.on("addMember", (clientId, details) => {
+        protocol.quorum.on("addMember", (clientId) => {
             this.connectionStateHandler.receivedAddMemberEvent(clientId);
         });
 
