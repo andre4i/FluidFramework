@@ -1168,7 +1168,7 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
         // Initialize document details - if loading a snapshot use that - otherwise we need to wait on
         // the initial details
 
-        assert(snapshot === undefined, "Using a legacy unsupported path, snapshot should be ");
+        assert(snapshot !== undefined, "Using a legacy scenario, snapshot should not be 'undefined'");
 
         this._existing = true;
         switch (loadMode.opsBeforeReturn) {
