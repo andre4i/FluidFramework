@@ -300,6 +300,8 @@ async function processNode(
 
     await (async (workerData: IWorkerArgs) => limiter.addWork(async () => new Promise((resolve, reject) => {
         const worker = new threads.Worker(workerLocation, { workerData });
+        const wrapError = (error: Error): Error =>
+            new Error(`${error}\n\n Context: ${JSON.stringify(data)}, concurrently: ${concurrently}\n`);
 
         worker.on("message", (message: string) => {
             if (message === "true") {
@@ -308,19 +310,19 @@ async function processNode(
             if (workerData.mode === Mode.Compare) {
                 // eslint-disable-next-line max-len
                 const extra = "If you changed snapshot representation and validated new format is backward compatible, you can run `npm run test:generate` to regenerate baseline snapshots";
-                reject(new Error(`${message}\n${extra}`));
+                reject(wrapError(new Error(`${message}\n${extra}`)));
             } else {
-                reject(new Error(message));
+                reject(wrapError(new Error(message)));
             }
         });
 
         worker.on("error", (error) => {
-            reject(error);
+            reject(wrapError(error));
         });
 
         worker.on("exit", (code) => {
             if (code !== 0) {
-                reject(new Error(`Worker stopped with exit code ${code}`));
+                reject(wrapError(new Error(`Worker stopped with exit code ${code}`)));
             }
         });
     })))(data);
