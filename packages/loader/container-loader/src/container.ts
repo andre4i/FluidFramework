@@ -1205,6 +1205,7 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
             }
             // Intentionally don't .catch on this promise - we'll let any error throw below in the await.
             const details = await startConnectionP;
+            assert(!details.existing, "Existing should be false");
             existing = details.existing;
         }
 
