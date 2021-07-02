@@ -1166,6 +1166,8 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
 
         // Initialize document details - if loading a snapshot use that - otherwise we need to wait on
         // the initial details
+
+        assert(snapshot !== undefined, "what");
         let existing = true;
         if (snapshot !== undefined) {
             switch (loadMode.opsBeforeReturn) {
