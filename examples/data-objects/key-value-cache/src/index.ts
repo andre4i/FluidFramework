@@ -133,13 +133,11 @@ export class KeyValueFactoryComponent
         const runtime: ContainerRuntime = await ContainerRuntime.load(
             context,
             new Map([[this.type, Promise.resolve(this)]]),
+            existing,
             buildRuntimeRequestHandler(
                 defaultRouteRequestHandler(this.defaultComponentId),
                 innerRequestHandler,
             ),
-            undefined, // runtimeOptions
-            undefined, // containerScope
-            existing,
         );
         return runtime;
     }

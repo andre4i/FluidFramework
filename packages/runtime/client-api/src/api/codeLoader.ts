@@ -120,13 +120,12 @@ export class ChaincodeFactory extends RuntimeFactoryHelper {
                 [chaincode.type, Promise.resolve(chaincode)],
                 ...this.registries,
             ],
+            existing,
             buildRuntimeRequestHandler(
                 defaultRouteRequestHandler(rootStoreId),
                 innerRequestHandler,
             ),
             this.runtimeOptions,
-            undefined, // containerScope
-            existing,
         );
 
         return runtime;

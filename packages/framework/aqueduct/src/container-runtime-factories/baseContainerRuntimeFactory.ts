@@ -79,12 +79,12 @@ export class BaseContainerRuntimeFactory
         const runtime: ContainerRuntime = await ContainerRuntime.load(
             context,
             this.registryEntries,
+            existing,
             buildRuntimeRequestHandler(
                 ...this.requestHandlers,
                 innerRequestHandler),
             this.runtimeOptions,
             scope,
-            existing,
         );
 
         // we register the runtime so developers of providers can use it in the factory pattern.

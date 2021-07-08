@@ -540,15 +540,15 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
      * @param registryEntries - Mapping to the stores.
      * @param requestHandler - Request handlers for the container runtime
      * @param runtimeOptions - Additional options to be passed to the runtime
-     * @param existing - (optional) When loading from an existing snapshot. Precedes context.existing if provided
+     * @param existing - When loading from an existing snapshot. Precedes context.existing if provided
      */
     public static async load(
         context: IContainerContext,
         registryEntries: NamedFluidDataStoreRegistryEntries,
+        existing: boolean,
         requestHandler?: (request: IRequest, runtime: IContainerRuntime) => Promise<IResponse>,
         runtimeOptions?: IContainerRuntimeOptions,
         containerScope: IFluidObject = context.scope,
-        existing?: boolean,
     ): Promise<ContainerRuntime> {
         const logger = ChildLogger.create(context.logger, undefined, {
             all: {
@@ -598,8 +598,6 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
         };
         const chunks = await tryFetchBlob<[string, string[]][]>(chunksBlobName) ?? [];
         const metadata = await tryFetchBlob<IContainerRuntimeMetadata>(metadataBlobName);
-        const loadExisting = existing === true || context.existing === true;
-
         const runtime = new ContainerRuntime(
             context,
             registry,
@@ -608,7 +606,7 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
             combinedRuntimeOptions,
             containerScope,
             logger,
-            loadExisting,
+            existing,
             requestHandler,
             storage);
 

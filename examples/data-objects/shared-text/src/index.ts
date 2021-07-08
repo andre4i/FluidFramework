@@ -74,13 +74,11 @@ class SharedTextFactoryComponent extends RuntimeFactoryHelper implements IFluidD
                 [SharedTextFactoryComponent.type, Promise.resolve(this)],
                 AgentSchedulerFactory.registryEntry,
             ],
+            existing,
             buildRuntimeRequestHandler(
                 defaultRouteRequestHandler(DefaultComponentName),
                 innerRequestHandler,
             ),
-            undefined, // runtimeOptions
-            undefined, // containerScope
-            existing,
         );
 
         return runtime;

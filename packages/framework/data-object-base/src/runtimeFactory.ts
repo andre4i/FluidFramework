@@ -50,12 +50,10 @@ export class RuntimeFactory extends RuntimeFactoryHelper {
         const runtime: ContainerRuntime = await ContainerRuntime.load(
             context,
             this.registry,
+            existing,
             buildRuntimeRequestHandler(
                 ...this.requestHandlers,
                 innerRequestHandler),
-            undefined, // runtimeOptions
-            undefined, // containerScope
-            existing,
         );
 
         // Flush mode to manual to batch operations within a turn
