@@ -252,10 +252,6 @@ export interface IFluidDataStoreContext extends
      * The package path of the data store as per the package factory.
      */
     readonly packagePath: readonly string[];
-    /**
-     * TODO: should remove after detachedNew is in place
-     */
-    readonly existing: boolean;
     readonly options: ILoaderOptions;
     readonly clientId: string | undefined;
     readonly connected: boolean;
