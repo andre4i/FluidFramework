@@ -112,7 +112,7 @@ IFluidDataStoreChannel, IFluidDataStoreRuntime, IFluidHandleContext {
         context: IFluidDataStoreContext,
         sharedObjectRegistry: ISharedObjectRegistry,
     ): FluidDataStoreRuntime {
-        return new FluidDataStoreRuntime(context, sharedObjectRegistry, /* existing */ true);
+        return new FluidDataStoreRuntime(context, sharedObjectRegistry);
     }
 
     public get IFluidRouter() { return this; }
@@ -194,7 +194,7 @@ IFluidDataStoreChannel, IFluidDataStoreRuntime, IFluidHandleContext {
     public constructor(
         private readonly dataStoreContext: IFluidDataStoreContext,
         private readonly sharedObjectRegistry: ISharedObjectRegistry,
-        public readonly existing: boolean = false,
+        public readonly existing: boolean = true,
     ) {
         super();
 
