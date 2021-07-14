@@ -74,6 +74,7 @@ export class Chaincode implements IFluidDataStoreFactory {
             map.SharedDirectory.getFactory(),
             sequence.SharedIntervalCollection.getFactory(),
             SharedMatrix.getFactory(),
+            existing,
         ].map((factory) => [factory.type, factory])));
 
         // Initialize core data structures
