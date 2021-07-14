@@ -370,7 +370,7 @@ class AgentSchedulerRuntime extends FluidDataStoreRuntime {
         sharedObjectRegistry: ISharedObjectRegistry,
         existing: boolean,
     ) {
-        super(dataStoreContext, sharedObjectRegistry);
+        super(dataStoreContext, sharedObjectRegistry, existing);
         this.agentSchedulerP = AgentScheduler.load(this, dataStoreContext, existing);
     }
     public async request(request: IRequest) {

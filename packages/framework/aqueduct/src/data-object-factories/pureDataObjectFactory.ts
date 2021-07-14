@@ -69,6 +69,7 @@ async function createDataObject<TObj extends PureDataObject<O, S, E>, O, S, E ex
     const runtime = new runtimeClass(
         context,
         sharedObjectRegistry,
+        existing,
     );
 
     // Create object right away.
