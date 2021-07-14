@@ -191,7 +191,7 @@ IFluidDataStoreChannel, IFluidDataStoreRuntime, IFluidHandleContext {
     // This is used to initialize the context with data from the previous summary.
     private readonly initialChannelGCDataP: LazyPromise<Map<string, IGarbageCollectionData>>;
 
-    protected constructor(
+    public constructor(
         private readonly dataStoreContext: IFluidDataStoreContext,
         private readonly sharedObjectRegistry: ISharedObjectRegistry,
         existing: boolean,
