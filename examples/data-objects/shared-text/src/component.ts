@@ -113,7 +113,7 @@ export class SharedTextRunner
     }
 
     private async initialize(existing: boolean): Promise<void> {
-        this.collabDoc = await Document.load(this.runtime);
+        this.collabDoc = await Document.load(this.runtime, existing);
         this.rootView = this.collabDoc.getRoot();
 
         if (!existing) {
@@ -227,7 +227,9 @@ export class SharedTextRunner
                 this.runtime,
                 this.context,
                 this.rootView,
-                () => { throw new Error("Can't close document"); }),
+                () => { throw new Error("Can't close document"); },
+                true, /* existing */
+            ),
             this.sharedString,
             image,
             {});

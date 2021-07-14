@@ -23,7 +23,7 @@ export class Document {
             root = await runtime.getChannel(rootMapId) as ISharedMap;
         }
 
-        const document = new Document(runtime, root);
+        const document = new Document(runtime, root, existing);
 
         return document;
     }
@@ -31,8 +31,11 @@ export class Document {
     /**
      * Constructs a new document from the provided details
      */
-    private constructor(public runtime: IFluidDataStoreRuntime, private readonly root: ISharedMap) {
-    }
+    private constructor(
+        public runtime: IFluidDataStoreRuntime,
+        private readonly root: ISharedMap,
+        public readonly existing: boolean,
+    ) { }
 
     public getRoot(): ISharedMap {
         return this.root;
