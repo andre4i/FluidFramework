@@ -293,13 +293,17 @@ export function instantiateDataStore(context: IFluidDataStoreContext, existing: 
             return router.request(request);
         });
 
-    const runtime = new runtimeClass(context, new Map([
-        SharedMap.getFactory(),
-        SharedString.getFactory(),
-        SharedCell.getFactory(),
-        SharedObjectSequence.getFactory(),
-        SharedNumberSequence.getFactory(),
-    ].map((factory) => [factory.type, factory])));
+    const runtime = new runtimeClass(
+        context,
+        new Map([
+            SharedMap.getFactory(),
+            SharedString.getFactory(),
+            SharedCell.getFactory(),
+            SharedObjectSequence.getFactory(),
+            SharedNumberSequence.getFactory(),
+        ].map((factory) => [factory.type, factory])),
+        existing,
+    );
     const routerP = SharedTextRunner.load(runtime, context, existing);
 
     return runtime;

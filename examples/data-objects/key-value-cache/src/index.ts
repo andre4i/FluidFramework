@@ -114,9 +114,13 @@ export class KeyValueFactoryComponent
                 return router.request(request);
             });
 
-        const runtime = new runtimeClass(context, new Map([
-            SharedMap.getFactory(),
-        ].map((factory) => [factory.type, factory])));
+        const runtime = new runtimeClass(
+            context,
+            new Map([
+                SharedMap.getFactory(),
+            ].map((factory) => [factory.type, factory])),
+            existing,
+        );
         const routerP = KeyValue.load(runtime, context, existing);
 
         return runtime;

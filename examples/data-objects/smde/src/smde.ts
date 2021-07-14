@@ -219,10 +219,14 @@ class SmdeFactory implements IFluidDataStoreFactory {
                 return router.request(request);
             });
 
-        const runtime = new runtimeClass(context, new Map([
-            SharedMap.getFactory(),
-            SharedString.getFactory(),
-        ].map((factory) => [factory.type, factory])));
+        const runtime = new runtimeClass(
+            context,
+            new Map([
+                SharedMap.getFactory(),
+                SharedString.getFactory(),
+            ].map((factory) => [factory.type, factory])),
+            existing,
+        );
         const routerP = Smde.load(runtime, context, existing);
 
         return runtime;
