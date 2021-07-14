@@ -45,7 +45,7 @@ export class Chaincode implements IFluidDataStoreFactory {
         private readonly dataStoreFactory: typeof FluidDataStoreRuntime = FluidDataStoreRuntime)
     { }
 
-    public async instantiateDataStore(context: IFluidDataStoreContext) {
+    public async instantiateDataStore(context: IFluidDataStoreContext, existing: boolean) {
         const runtimeClass = mixinRequestHandler(
             async (request: IRequest) => {
                 const document = await routerP;
@@ -78,7 +78,7 @@ export class Chaincode implements IFluidDataStoreFactory {
 
         // Initialize core data structures
         let root: map.ISharedMap;
-        if (!runtime.existing) {
+        if (!existing) {
             root = map.SharedMap.create(runtime, rootMapId);
             root.bindToContext();
 

@@ -206,7 +206,7 @@ export abstract class FluidDataStoreContext extends TypedEventEmitter<IFluidData
     constructor(
         private readonly _containerRuntime: ContainerRuntime,
         public readonly id: string,
-        public readonly existing: boolean,
+        private readonly existing: boolean,
         public readonly storage: IDocumentStorageService,
         public readonly scope: IFluidObject,
         createSummarizerNode: CreateChildSummarizerNodeFn,
@@ -316,7 +316,7 @@ export abstract class FluidDataStoreContext extends TypedEventEmitter<IFluidData
         assert(this.registry === undefined, 0x13f /* "datastore context registry is already set" */);
         this.registry = registry;
 
-        const channel = await factory.instantiateDataStore(this);
+        const channel = await factory.instantiateDataStore(this, this.existing);
         assert(channel !== undefined, 0x140 /* "undefined channel on datastore context" */);
         this.bindRuntime(channel);
     }

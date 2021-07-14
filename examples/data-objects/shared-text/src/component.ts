@@ -56,9 +56,10 @@ export class SharedTextRunner
     public static async load(
         runtime: FluidDataStoreRuntime,
         context: IFluidDataStoreContext,
+        existing: boolean,
     ): Promise<SharedTextRunner> {
         const runner = new SharedTextRunner(runtime, context);
-        await runner.initialize();
+        await runner.initialize(existing);
 
         return runner;
     }
@@ -111,11 +112,11 @@ export class SharedTextRunner
         }
     }
 
-    private async initialize(): Promise<void> {
+    private async initialize(existing: boolean): Promise<void> {
         this.collabDoc = await Document.load(this.runtime);
         this.rootView = this.collabDoc.getRoot();
 
-        if (!this.runtime.existing) {
+        if (!existing) {
             const insightsMapId = "insights";
 
             const insights = this.collabDoc.createMap(insightsMapId);
@@ -285,7 +286,7 @@ class TaskScheduler {
     }
 }
 
-export function instantiateDataStore(context: IFluidDataStoreContext) {
+export function instantiateDataStore(context: IFluidDataStoreContext, existing: boolean) {
     const runtimeClass = mixinRequestHandler(
         async (request: IRequest) => {
             const router = await routerP;
@@ -299,7 +300,7 @@ export function instantiateDataStore(context: IFluidDataStoreContext) {
         SharedObjectSequence.getFactory(),
         SharedNumberSequence.getFactory(),
     ].map((factory) => [factory.type, factory])));
-    const routerP = SharedTextRunner.load(runtime, context);
+    const routerP = SharedTextRunner.load(runtime, context, existing);
 
     return runtime;
 }

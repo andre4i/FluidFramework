@@ -13,10 +13,10 @@ const rootMapId = "root";
  * A document is a collection of collaborative types.
  */
 export class Document {
-    public static async load(runtime: IFluidDataStoreRuntime): Promise<Document> {
+    public static async load(runtime: IFluidDataStoreRuntime, existing: boolean): Promise<Document> {
         let root: ISharedMap;
 
-        if (!runtime.existing) {
+        if (!existing) {
             root = SharedMap.create(runtime, rootMapId);
             root.bindToContext();
         } else {
@@ -26,13 +26,6 @@ export class Document {
         const document = new Document(runtime, root);
 
         return document;
-    }
-
-    /**
-     * Flag indicating whether the document already existed at the time of load
-     */
-    public get existing(): boolean {
-        return this.runtime.existing;
     }
 
     /**

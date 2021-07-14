@@ -387,9 +387,9 @@ const html =
 export class Scribe
     extends EventEmitter
     implements IFluidLoadable, IFluidRouter, IFluidHTMLView {
-    public static async load(runtime: IFluidDataStoreRuntime, context: IFluidDataStoreContext) {
+    public static async load(runtime: IFluidDataStoreRuntime, context: IFluidDataStoreContext, existing: boolean) {
         const collection = new Scribe(runtime, context);
-        await collection.initialize();
+        await collection.initialize(existing);
 
         return collection;
     }
@@ -415,7 +415,7 @@ export class Scribe
         return defaultFluidObjectRequestHandler(this, request);
     }
 
-    public render(elm: HTMLElement, options?: IFluidHTMLOptions): void {
+    public render(elm: HTMLElement, _options?: IFluidHTMLOptions): void {
         if (!this.div) {
             this.div = document.createElement("div");
             this.div.innerHTML = html;
@@ -437,8 +437,8 @@ export class Scribe
         }
     }
 
-    private async initialize() {
-        if (!this.runtime.existing) {
+    private async initialize(existing: boolean) {
+        if (!existing) {
             this.root = SharedMap.create(this.runtime, "root");
             this.root.bindToContext();
         } else {
@@ -481,7 +481,7 @@ class ScribeFactory extends RuntimeFactoryHelper implements IFluidDataStoreFacto
         return runtime;
     }
 
-    public async instantiateDataStore(context: IFluidDataStoreContext) {
+    public async instantiateDataStore(context: IFluidDataStoreContext, existing: boolean) {
         const runtimeClass = mixinRequestHandler(
             async (request: IRequest) => {
                 const router = await routerP;
@@ -491,7 +491,7 @@ class ScribeFactory extends RuntimeFactoryHelper implements IFluidDataStoreFacto
         const runtime = new runtimeClass(context, new Map([
             SharedMap.getFactory(),
         ].map((factory) => [factory.type, factory])));
-        const routerP = Scribe.load(runtime, context);
+        const routerP = Scribe.load(runtime, context, existing);
 
         return runtime;
     }
