@@ -61,21 +61,24 @@ export class Chaincode implements IFluidDataStoreFactory {
             },
             this.dataStoreFactory);
 
-        const runtime = new runtimeClass(context, new Map([
-            map.SharedMap.getFactory(),
-            sequence.SharedString.getFactory(),
-            ink.Ink.getFactory(),
-            cell.SharedCell.getFactory(),
-            sequence.SharedObjectSequence.getFactory(),
-            sequence.SharedNumberSequence.getFactory(),
-            ConsensusQueue.getFactory(),
-            ConsensusRegisterCollection.getFactory(),
-            sequence.SparseMatrix.getFactory(),
-            map.SharedDirectory.getFactory(),
-            sequence.SharedIntervalCollection.getFactory(),
-            SharedMatrix.getFactory(),
+        const runtime = new runtimeClass(
+            context,
+            new Map([
+                map.SharedMap.getFactory(),
+                sequence.SharedString.getFactory(),
+                ink.Ink.getFactory(),
+                cell.SharedCell.getFactory(),
+                sequence.SharedObjectSequence.getFactory(),
+                sequence.SharedNumberSequence.getFactory(),
+                ConsensusQueue.getFactory(),
+                ConsensusRegisterCollection.getFactory(),
+                sequence.SparseMatrix.getFactory(),
+                map.SharedDirectory.getFactory(),
+                sequence.SharedIntervalCollection.getFactory(),
+                SharedMatrix.getFactory(),
+            ].map((factory) => [factory.type, factory])),
             existing,
-        ].map((factory) => [factory.type, factory])));
+        );
 
         // Initialize core data structures
         let root: map.ISharedMap;
