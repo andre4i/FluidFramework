@@ -83,7 +83,7 @@ export class Document extends EventEmitter {
         public readonly context: IFluidDataStoreContext,
         private readonly root: ISharedMap,
         private readonly closeFn: () => void,
-        private readonly existing: boolean,
+        public readonly existing: boolean,
     ) {
         super();
     }
