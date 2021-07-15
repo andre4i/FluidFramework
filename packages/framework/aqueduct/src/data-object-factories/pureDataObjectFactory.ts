@@ -90,7 +90,7 @@ async function createDataObject<TObj extends PureDataObject<O, S, E>, O, S, E ex
     // to this data store, as it's still not initialized and not known to container runtime yet.
     // In the future, we should address it by using relative paths for handles and be able to resolve
     // local DDSs while data store is not fully initialized.
-    if (existing) {
+    if (!existing) {
         await instance.finishInitialization(existing);
     }
 
