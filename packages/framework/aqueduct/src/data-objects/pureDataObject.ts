@@ -87,7 +87,7 @@ export abstract class PureDataObject<O extends IFluidObject = object, S = undefi
     public static async getDataObject(runtime: IFluidDataStoreRuntime) {
         const obj = (runtime as any)._dataObject as PureDataObject;
         assert(obj !== undefined, 0x0bc /* "Runtime has no DataObject!" */);
-        await obj.finishInitialization(true);
+        await obj.finishInitialization(false);
         return obj;
     }
 
