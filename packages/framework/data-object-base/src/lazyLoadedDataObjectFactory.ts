@@ -72,19 +72,7 @@ export class LazyLoadedDataObjectFactory<T extends LazyLoadedDataObject> impleme
     }
 
     private instantiate(context: IFluidDataStoreContext, runtime: IFluidDataStoreRuntime) {
-        // New data store instances are synchronously created.  Loading a previously created
-        // store is deferred (via a LazyPromise) until requested by invoking `.then()`.
-        return runtime.existing
-            ? new LazyPromise(async () => this.load(context, runtime))
-            : this.createCore(context, runtime);
-    }
-
-    private createCore(context: IFluidDataStoreContext, runtime: IFluidDataStoreRuntime, props?: any) {
-        const root = runtime.createChannel("root", this.root.type) as ISharedObject;
-        const instance = new this.ctor(context, runtime, root);
-        instance.create(props);
-        root.bindToContext();
-        return instance;
+        return  new LazyPromise(async () => this.load(context, runtime));
     }
 
     private async load(context: IFluidDataStoreContext, runtime: IFluidDataStoreRuntime) {

@@ -206,7 +206,6 @@ export abstract class FluidDataStoreContext extends TypedEventEmitter<IFluidData
     constructor(
         private readonly _containerRuntime: ContainerRuntime,
         public readonly id: string,
-        public readonly existing: boolean,
         public readonly storage: IDocumentStorageService,
         public readonly scope: IFluidObject,
         createSummarizerNode: CreateChildSummarizerNodeFn,
@@ -221,7 +220,7 @@ export abstract class FluidDataStoreContext extends TypedEventEmitter<IFluidData
         // Thus having slashes in types almost guarantees trouble down the road!
         assert(id.indexOf("/") === -1, 0x13a /* `Data store ID contains slash: ${id}` */);
 
-        this._attachState = this.containerRuntime.attachState !== AttachState.Detached && existing ?
+        this._attachState = this.containerRuntime.attachState !== AttachState.Detached ?
             this.containerRuntime.attachState : AttachState.Detached;
 
         this.bindToContext = () => {

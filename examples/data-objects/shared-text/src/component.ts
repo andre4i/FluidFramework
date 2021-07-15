@@ -115,51 +115,6 @@ export class SharedTextRunner
         this.collabDoc = await Document.load(this.runtime);
         this.rootView = this.collabDoc.getRoot();
 
-        if (!this.runtime.existing) {
-            const insightsMapId = "insights";
-
-            const insights = this.collabDoc.createMap(insightsMapId);
-            this.rootView.set(insightsMapId, insights.handle);
-
-            debug(`Not existing ${this.runtime.id} - ${performance.now()}`);
-            this.rootView.set("users", this.collabDoc.createMap().handle);
-            const seq = SharedNumberSequence.create(this.collabDoc.runtime);
-            this.rootView.set("sequence-test", seq.handle);
-            const newString = this.collabDoc.createString();
-
-            const template = parse(window.location.search.substr(1)).template;
-            const starterText = template
-                ? await downloadRawText(`/public/literature/${template}`)
-                : " ";
-
-            const segments = MergeTree.loadSegments(starterText, 0, true);
-            for (const segment of segments) {
-                if (MergeTree.TextSegment.is(segment)) {
-                    newString.insertText(newString.getLength(), segment.text,
-                        segment.properties);
-                } else {
-                    // Assume marker
-                    const marker = segment as MergeTree.Marker;
-                    newString.insertMarker(newString.getLength(), marker.refType, marker.properties);
-                }
-            }
-            this.rootView.set("text", newString.handle);
-
-            const containerRuntime = this.context.containerRuntime;
-            const math = await getHandle(containerRuntime.createDataStore("@fluid-example/math"));
-
-            this.rootView.set("math", math);
-
-            insights.set(newString.id, this.collabDoc.createMap().handle);
-
-            // The flowContainerMap MUST be set last
-
-            const flowContainerMap = this.collabDoc.createMap();
-            this.rootView.set("flowContainerMap", flowContainerMap.handle);
-
-            insights.set(newString.id, this.collabDoc.createMap().handle);
-        }
-
         debug(`collabDoc loaded ${this.runtime.id} - ${performance.now()}`);
         debug(`Getting root ${this.runtime.id} - ${performance.now()}`);
 

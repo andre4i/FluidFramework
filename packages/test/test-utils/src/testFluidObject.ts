@@ -85,17 +85,6 @@ export class TestFluidObject implements ITestFluidObject {
     }
 
     private async initialize() {
-        if (!this.runtime.existing) {
-            this.root = SharedMap.create(this.runtime, "root");
-
-            this.factoryEntriesMap.forEach((sharedObjectFactory: IChannelFactory, key: string) => {
-                const sharedObject = this.runtime.createChannel(key, sharedObjectFactory.type);
-                this.root.set(key, sharedObject.handle);
-            });
-
-            this.root.bindToContext();
-        }
-
         this.root = await this.runtime.getChannel("root") as ISharedMap;
     }
 }

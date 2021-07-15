@@ -177,7 +177,6 @@ IFluidDataStoreChannel, IFluidDataStoreRuntime, IFluidHandleContext {
 
     public readonly documentId: string;
     public readonly id: string;
-    public existing: boolean;
     public readonly options: ILoaderOptions;
     public readonly deltaManager: IDeltaManager<ISequencedDocumentMessage, IDocumentMessage>;
     private readonly quorum: IQuorum;
@@ -206,7 +205,6 @@ IFluidDataStoreChannel, IFluidDataStoreRuntime, IFluidHandleContext {
         );
         this.documentId = dataStoreContext.documentId;
         this.id = dataStoreContext.id;
-        this.existing = dataStoreContext.existing;
         this.options = dataStoreContext.options;
         this.deltaManager = dataStoreContext.deltaManager;
         this.quorum = dataStoreContext.getQuorum();
@@ -297,14 +295,10 @@ IFluidDataStoreChannel, IFluidDataStoreRuntime, IFluidHandleContext {
         }
 
         this.attachListener();
-        // If exists on storage or loaded from a snapshot, it should already be binded.
-        this.bindState = this.existing ? BindState.Bound : BindState.NotBound;
+        this.bindState = BindState.Bound;
         this._attachState = dataStoreContext.attachState;
 
-        // If it's existing we know it has been attached.
-        if (this.existing) {
-            this.deferredAttached.resolve();
-        }
+        this.deferredAttached.resolve();
     }
 
     public dispose(): void {

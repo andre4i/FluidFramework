@@ -76,19 +76,9 @@ export class Chaincode implements IFluidDataStoreFactory {
             SharedMatrix.getFactory(),
         ].map((factory) => [factory.type, factory])));
 
-        // Initialize core data structures
-        let root: map.ISharedMap;
-        if (!runtime.existing) {
-            root = map.SharedMap.create(runtime, rootMapId);
-            root.bindToContext();
-
-            const insights = map.SharedMap.create(runtime, insightsMapId);
-            root.set(insightsMapId, insights.handle);
-        }
-
         // Create the underlying Document
         const createDocument = async () => {
-            root = await runtime.getChannel(rootMapId) as map.ISharedMap;
+            const root = await runtime.getChannel(rootMapId) as map.ISharedMap;
             return new Document(runtime, context, root, this.closeFn);
         };
 

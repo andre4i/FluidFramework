@@ -79,19 +79,6 @@ async function createDataObject<TObj extends PureDataObject<O, S, E>, O, S, E ex
     const providers = dependencyContainer.synthesize<O>(optionalProviders, {});
     const instance = new ctor({ runtime, context, providers, initProps });
 
-    // if it's a newly created object, we need to wait for it to finish initialization
-    // as that results in creation of DDSs, before it gets attached, providing atomic
-    // guarantee of creation.
-    // WARNING: we can't do the same (yet) for already existing PureDataObject!
-    // This will result in deadlock, as it tries to resolve internal handles, but any
-    // handle resolution goes through root (container runtime), which can't route it back
-    // to this data store, as it's still not initialized and not known to container runtime yet.
-    // In the future, we should address it by using relative paths for handles and be able to resolve
-    // local DDSs while data store is not fully initialized.
-    if (!runtime.existing) {
-        await instance.finishInitialization();
-    }
-
     return { instance, runtime };
 }
 

@@ -14,25 +14,10 @@ const rootMapId = "root";
  */
 export class Document {
     public static async load(runtime: IFluidDataStoreRuntime): Promise<Document> {
-        let root: ISharedMap;
-
-        if (!runtime.existing) {
-            root = SharedMap.create(runtime, rootMapId);
-            root.bindToContext();
-        } else {
-            root = await runtime.getChannel(rootMapId) as ISharedMap;
-        }
-
+        const root = await runtime.getChannel(rootMapId) as ISharedMap;
         const document = new Document(runtime, root);
 
         return document;
-    }
-
-    /**
-     * Flag indicating whether the document already existed at the time of load
-     */
-    public get existing(): boolean {
-        return this.runtime.existing;
     }
 
     /**

@@ -63,24 +63,18 @@ export abstract class DataObject<O extends IFluidObject = object, S = undefined,
      * Caller is responsible for ensuring this is only invoked once.
      */
     public async initializeInternal(): Promise<void> {
-        if (!this.runtime.existing) {
-            // Create a root directory and register it before calling initializingFirstTime
-            this.internalRoot = SharedDirectory.create(this.runtime, this.rootDirectoryId);
-            this.internalRoot.bindToContext();
-        } else {
-            // data store has a root directory so we just need to set it before calling initializingFromExisting
-            this.internalRoot = await this.runtime.getChannel(this.rootDirectoryId) as ISharedDirectory;
+        // data store has a root directory so we just need to set it before calling initializingFromExisting
+        this.internalRoot = await this.runtime.getChannel(this.rootDirectoryId) as ISharedDirectory;
 
-            // This will actually be an ISharedMap if the channel was previously created by the older version of
-            // DataObject which used a SharedMap.  Since SharedMap and SharedDirectory are compatible unless
-            // SharedDirectory-only commands are used on SharedMap, this will mostly just work for compatibility.
-            if (this.internalRoot.attributes.type === MapFactory.Type) {
-                this.runtime.logger.send({
-                    category: "generic",
-                    eventName: "MapDataObject",
-                    message: "Legacy document, SharedMap is masquerading as SharedDirectory in DataObject",
-                });
-            }
+        // This will actually be an ISharedMap if the channel was previously created by the older version of
+        // DataObject which used a SharedMap.  Since SharedMap and SharedDirectory are compatible unless
+        // SharedDirectory-only commands are used on SharedMap, this will mostly just work for compatibility.
+        if (this.internalRoot.attributes.type === MapFactory.Type) {
+            this.runtime.logger.send({
+                category: "generic",
+                eventName: "MapDataObject",
+                message: "Legacy document, SharedMap is masquerading as SharedDirectory in DataObject",
+            });
         }
 
         await super.initializeInternal();

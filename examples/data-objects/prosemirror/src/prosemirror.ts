@@ -136,18 +136,6 @@ export class ProseMirror extends EventEmitter
     }
 
     private async initialize() {
-        if (!this.runtime.existing) {
-            this.root = SharedMap.create(this.runtime, "root");
-            const text = SharedString.create(this.runtime);
-
-            const ops = createTreeMarkerOps("prosemirror", 0, 1, "paragraph");
-            text.groupOperation({ ops, type: MergeTreeDeltaType.GROUP });
-            text.insertText(1, "Hello, world!");
-
-            this.root.set("text", text.handle);
-            this.root.bindToContext();
-        }
-
         this.root = await this.runtime.getChannel("root") as ISharedMap;
         this.text = await this.root.get<IFluidHandle<SharedString>>("text")!.get();
 

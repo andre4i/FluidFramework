@@ -89,12 +89,7 @@ class KeyValue implements IKeyValue, IFluidObject, IFluidRouter {
     }
 
     private async initialize() {
-        if (!this.runtime.existing) {
-            this._root = SharedMap.create(this.runtime, "root");
-            this._root.bindToContext();
-        } else {
-            this._root = await this.runtime.getChannel("root") as ISharedMap;
-        }
+        this._root = await this.runtime.getChannel("root") as ISharedMap;
     }
 }
 

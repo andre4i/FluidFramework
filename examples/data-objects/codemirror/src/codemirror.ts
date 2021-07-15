@@ -234,20 +234,6 @@ export class CodeMirrorComponent
     }
 
     private async initialize() {
-        if (!this.runtime.existing) {
-            this.root = SharedMap.create(this.runtime, "root");
-            const text = SharedString.create(this.runtime);
-
-            // Initial paragraph marker
-            text.insertMarker(
-                0,
-                ReferenceType.Tile,
-                { [reservedTileLabelsKey]: ["pg"] });
-
-            this.root.set("text", text.handle);
-            this.root.bindToContext();
-        }
-
         this.root = await this.runtime.getChannel("root") as ISharedMap;
         this.text = await this.root.get<IFluidHandle<SharedString>>("text")?.get();
     }
