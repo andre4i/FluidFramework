@@ -661,7 +661,6 @@ export class RemotedFluidDataStoreContext extends FluidDataStoreContext {
         super(
             runtime,
             id,
-            true,
             storage,
             scope,
             createSummarizerNode,
@@ -784,7 +783,6 @@ export class LocalFluidDataStoreContextBase extends FluidDataStoreContext {
         super(
             runtime,
             id,
-            snapshotTree !== undefined ? true : false,
             storage,
             scope,
             createSummarizerNode,

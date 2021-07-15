@@ -35,7 +35,7 @@ export async function getInsights(map: ISharedMap, id: string): Promise<ISharedM
 }
 
 export async function setTranslation(
-    document: { existing: boolean, getRoot: () => ISharedMap },
+    document: { getRoot: () => ISharedMap },
     id: string,
     fromLanguage: string,
     toLanguage: string,
@@ -44,11 +44,5 @@ export async function setTranslation(
     const handle = await document.getRoot().wait<IFluidHandle<ISharedMap>>("insights");
     const insights = await handle.get();
 
-    const idMapHandle = await insights.wait<IFluidHandle<ISharedMap>>(id);
-    const idMap = await idMapHandle.get();
-
-    if (!document.existing) {
-        idMap.set("translationFrom", fromLanguage);
-        idMap.set("translationTo", toLanguage);
-    }
+    void insights.wait<IFluidHandle<ISharedMap>>(id);
 }

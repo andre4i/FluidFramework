@@ -16,48 +16,12 @@ import {
 } from "@fluidframework/core-interfaces";
 import { FluidObjectHandle, mixinRequestHandler } from "@fluidframework/datastore";
 import { ISharedMap, SharedMap } from "@fluidframework/map";
-import {
-    IMergeTreeInsertMsg,
-    ReferenceType,
-    reservedRangeLabelsKey,
-    MergeTreeDeltaType,
-    createMap,
-} from "@fluidframework/merge-tree";
 import { IFluidDataStoreContext, IFluidDataStoreFactory } from "@fluidframework/runtime-definitions";
 import { IFluidDataStoreRuntime } from "@fluidframework/datastore-definitions";
 import { SharedString } from "@fluidframework/sequence";
 import { IFluidHTMLOptions, IFluidHTMLView } from "@fluidframework/view-interfaces";
 import { EditorView } from "prosemirror-view";
-import { nodeTypeKey } from "./fluidBridge";
 import { FluidCollabManager, IProvideRichTextEditor } from "./fluidCollabManager";
-
-function createTreeMarkerOps(
-    treeRangeLabel: string,
-    beginMarkerPos: number,
-    endMarkerPos: number,
-    nodeType: string,
-): IMergeTreeInsertMsg[] {
-    const endMarkerProps = createMap<any>();
-    endMarkerProps[reservedRangeLabelsKey] = [treeRangeLabel];
-    endMarkerProps[nodeTypeKey] = nodeType;
-
-    const beginMarkerProps = createMap<any>();
-    beginMarkerProps[reservedRangeLabelsKey] = [treeRangeLabel];
-    beginMarkerProps[nodeTypeKey] = nodeType;
-
-    return [
-        {
-            seg: { marker: { refType: ReferenceType.NestBegin }, props: beginMarkerProps },
-            pos1: beginMarkerPos,
-            type: MergeTreeDeltaType.INSERT,
-        },
-        {
-            seg: { marker: { refType: ReferenceType.NestEnd }, props: endMarkerProps },
-            pos1: endMarkerPos,
-            type: MergeTreeDeltaType.INSERT,
-        },
-    ];
-}
 
 class ProseMirrorView implements IFluidHTMLView {
     private content: HTMLDivElement | undefined;

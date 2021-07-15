@@ -28,8 +28,8 @@ const UnattachedClientId = `${uuid()}_unattached`;
 class AgentScheduler extends TypedEventEmitter<IAgentSchedulerEvents> implements IAgentScheduler {
     public static async load(runtime: IFluidDataStoreRuntime, context: IFluidDataStoreContext) {
         const root = await runtime.getChannel("root") as ISharedMap;
-        const consensusRegisterCollection = await handle.get();
         const handle = await root.wait<IFluidHandle<ConsensusRegisterCollection<string | null>>>("scheduler");
+        const consensusRegisterCollection = await handle.get();
         assert(handle !== undefined, 0x116 /* "Missing handle on scheduler load" */);
         const agentScheduler = new AgentScheduler(runtime, context, consensusRegisterCollection);
         agentScheduler.initialize();

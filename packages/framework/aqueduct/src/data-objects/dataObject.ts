@@ -8,7 +8,7 @@ import {
     IRequest,
     IResponse,
 } from "@fluidframework/core-interfaces";
-import { ISharedDirectory, MapFactory, SharedDirectory } from "@fluidframework/map";
+import { ISharedDirectory, MapFactory } from "@fluidframework/map";
 import { RequestParser, create404Response } from "@fluidframework/runtime-utils";
 import { IEvent } from "@fluidframework/common-definitions";
 import { PureDataObject } from "./pureDataObject";

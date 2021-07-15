@@ -33,7 +33,6 @@ import { Document } from "./document";
 
 const rootMapId = "root";
 const rootStoreId = "rootStore";
-const insightsMapId = "insights";
 
 export class Chaincode implements IFluidDataStoreFactory {
     public readonly type = "@fluid-internal/client-api";
