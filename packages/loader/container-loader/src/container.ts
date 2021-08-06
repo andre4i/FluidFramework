@@ -1147,24 +1147,11 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
         }
         this.service = await this.serviceFactory.createDocumentService(this._resolvedUrl, this.subLogger);
 
-        let startConnectionP: Promise<IConnectionDetails> | undefined;
-
-        // Ideally we always connect as "read" by default.
-        // Currently that works with SPO & r11s, because we get "write" connection when connecting to non-existing file.
-        // We should not rely on it by (one of them will address the issue, but we need to address both)
-        // 1) switching create new flow to one where we create file by posting snapshot
-        // 2) Fixing quorum workflows (have retry logic)
-        // That all said, "read" does not work with memorylicious workflows (that opens two simultaneous
-        // connections to same file) in two ways:
-        // A) creation flow breaks (as one of the clients "sees" file as existing, and hits #2 above)
-        // B) Once file is created, transition from view-only connection to write does not work - some bugs to be fixed.
-        const connectionArgs: IConnectionArgs = { reason: "DocumentOpen", mode: "write", fetchOpsFromStorage: false };
-
         // Start websocket connection as soon as possible. Note that there is no op handler attached yet, but the
         // DeltaManager is resilient to this and will wait to start processing ops until after it is attached.
         if (loadMode.deltaConnection === undefined) {
-            startConnectionP = this.connectToDeltaStream(connectionArgs);
-            startConnectionP.catch((error) => { });
+            const connectionArgs: IConnectionArgs = { reason: "DocumentOpen" };
+            this.connectToDeltaStream(connectionArgs).catch((error) => { });
         }
 
         await this.connectStorageService();
