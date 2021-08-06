@@ -1150,7 +1150,7 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
         // Start websocket connection as soon as possible. Note that there is no op handler attached yet, but the
         // DeltaManager is resilient to this and will wait to start processing ops until after it is attached.
         if (loadMode.deltaConnection === undefined) {
-            const connectionArgs: IConnectionArgs = { reason: "DocumentOpen" };
+            const connectionArgs: IConnectionArgs = { reason: "DocumentOpen", fetchOpsFromStorage: false };
             this.connectToDeltaStream(connectionArgs).catch((error) => { });
         }
 
