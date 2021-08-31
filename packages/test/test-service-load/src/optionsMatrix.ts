@@ -51,6 +51,7 @@ export function generateRuntimeOptions(seed: number) {
         gcOptions: [undefined, ...generatePairwiseOptions(gcOptionsMatrix, seed)],
         summaryOptions: [undefined, ...generatePairwiseOptions(summaryOptionsMatrix, seed)],
         loadSequenceNumberVerification: [undefined],
+        flushMode: [undefined],
     };
 
     return generatePairwiseOptions<IContainerRuntimeOptions>(runtimeOptionsMatrix, seed);

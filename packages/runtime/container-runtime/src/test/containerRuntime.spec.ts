@@ -12,20 +12,21 @@ import {
     MessageType,
 } from "@fluidframework/protocol-definitions";
 import { IContainerContext, IDeltaManager } from "@fluidframework/container-definitions";
+import { FlushMode } from "@fluidframework/runtime-definitions";
 import { MockDeltaManager, MockLogger, MockQuorum } from "@fluidframework/test-runtime-utils";
 import { ContainerRuntime, ScheduleManager } from "../containerRuntime";
 
 describe("Runtime", () => {
     describe("Container Runtime", () => {
         describe("ContainerRuntime", () => {
+            const mockContext: Partial<IContainerContext> = {
+                deltaManager: new MockDeltaManager(),
+                quorum: new MockQuorum(),
+                logger: new MockLogger(),
+            };
+
             describe("orderSequentially", () => {
                 let containerRuntime: ContainerRuntime;
-                const mockContext: Partial<IContainerContext> = {
-                    deltaManager: new MockDeltaManager(),
-                    quorum: new MockQuorum(),
-                    logger: new MockLogger(),
-                };
-
                 beforeEach(async () => {
                     containerRuntime = await ContainerRuntime.load(
                         mockContext as IContainerContext,
@@ -49,6 +50,39 @@ describe("Runtime", () => {
                             () => containerRuntime.orderSequentially(
                                 () => containerRuntime.orderSequentially(
                                     () => containerRuntime.flush()))));
+                });
+            });
+            describe("flushModeConfig", () => {
+                it("Default Flushmode.Immediate", async () => {
+                    const containerRuntime = await ContainerRuntime.load(
+                        mockContext as IContainerContext,
+                        [],
+                        undefined, // requestHandler
+                        {
+                            summaryOptions: {
+                                generateSummaries: false,
+                            },
+                        },
+                    );
+
+                    assert.equal(containerRuntime.flushMode, FlushMode.Immediate);
+                });
+
+                it("Config overrides default FlushMode", async () => {
+                    const expectedFlushMode = FlushMode.TurnBased;
+                    const containerRuntime = await ContainerRuntime.load(
+                        mockContext as IContainerContext,
+                        [],
+                        undefined, // requestHandler
+                        {
+                            summaryOptions: {
+                                generateSummaries: false,
+                            },
+                            flushMode: expectedFlushMode,
+                        },
+                    );
+
+                    assert.equal(containerRuntime.flushMode, expectedFlushMode);
                 });
             });
         });

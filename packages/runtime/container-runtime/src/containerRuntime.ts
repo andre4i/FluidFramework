@@ -267,6 +267,7 @@ export interface IContainerRuntimeOptions {
      * 3. "bypass" will skip the check entirely. This is not recommended.
      */
     loadSequenceNumberVerification?: "close" | "log" | "bypass";
+    flushMode?: FlushMode;
 }
 
 interface IRuntimeMessageMetadata {
@@ -277,8 +278,6 @@ interface IRuntimeMessageMetadata {
 const runGCKey = "FluidRunGC";
 // Local storage key to turn GC test mode on / off.
 const gcTestModeKey = "FluidGCTestMode";
-// Local storage key to set the default flush mode to TurnBased
-const turnBasedFlushModeKey = "FluidFlushModeTurnBased";
 
 export function isRuntimeMessage(message: ISequencedDocumentMessage): boolean {
     switch (message.type) {
@@ -536,6 +535,7 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
             summaryOptions = { generateSummaries: true },
             gcOptions = {},
             loadSequenceNumberVerification = "close",
+            flushMode = FlushMode.Immediate,
         } = runtimeOptions;
 
         // We pack at data store level only. If isolated channels are disabled,
@@ -622,6 +622,7 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
                 summaryOptions,
                 gcOptions,
                 loadSequenceNumberVerification,
+                flushMode,
             },
             containerScope,
             logger,
@@ -725,7 +726,7 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
     private readonly summarizerNode: IRootSummarizerNodeWithGC;
 
     private _orderSequentiallyCalls: number = 0;
-    private _flushMode = ContainerRuntime.defaultFlushMode;
+    private _flushMode = FlushMode.Immediate;
     private needsFlush = false;
     private flushTrigger = false;
 
@@ -788,10 +789,6 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
     public readonly disableIsolatedChannels: boolean;
     /** The message in the metadata of the base summary this container is loaded from. */
     private readonly baseSummaryMessage: ISummaryMetadataMessage | undefined;
-
-    private static get defaultFlushMode(): FlushMode {
-        return getLocalStorageFeatureGate(turnBasedFlushModeKey) ? FlushMode.TurnBased : FlushMode.Immediate;
-    }
 
     // Tells whether GC is enabled for this document or not. If the summaryGCVersion is > 0, GC is enabled.
     private get gcEnabled(): boolean {
@@ -1031,6 +1028,10 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
 
         if (context.pendingLocalState !== undefined) {
             this.deltaManager.on("op", this.onOp);
+        }
+
+        if (runtimeOptions.flushMode !== undefined) {
+            this._flushMode = runtimeOptions.flushMode;
         }
 
         ReportOpPerfTelemetry(this.context.clientId, this.deltaManager, this.logger);
