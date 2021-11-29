@@ -288,7 +288,7 @@ export class Loader implements IHostLoader {
 
         const subLogger = mixinConfigProvider(
             DebugLogger.mixinDebugLogger("fluid:telemetry", loaderProps.logger, { all:{loaderId: uuid()} }),
-            ConfigProvider.create("Fluid",[loaderProps.logger]));
+            ConfigProvider.create("Fluid",[sessionStorageProvider, loaderProps.configProvider]));
 
         this.logger = mixinChildLoggerWithConfigProvider(subLogger, "Loader");
 
