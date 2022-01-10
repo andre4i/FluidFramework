@@ -1,7 +1,7 @@
 on:
   push:
     branches:
-    - fix-workflow-target 29872be8ca
+    - main
 
 jobs:
   build-and-deploy:
