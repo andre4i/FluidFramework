@@ -14,6 +14,11 @@ import {
     RequestListener,
 } from "@fluidframework/server-services-core";
 import { Server, Socket } from "socket.io";
+// import { Socket as Socket2 } from "engine.io";
+// (Socket2.prototype as any).onError = function onError(error) {
+//     this.onClose("transport error", error);
+// };
+
 import { WebServer } from "./webServer";
 
 class SocketIoSocket implements IWebSocket {
@@ -58,6 +63,26 @@ class SocketIoServer extends EventEmitter implements IWebSocketServer {
         this.io.on("connection", (socket: Socket) => {
             const webSocket = new SocketIoSocket(socket);
             this.emit("connection", webSocket);
+            webSocket.on("error", (error, reason) => {
+                console.log(error);
+                console.log(reason);
+            });
+            webSocket.on("close", (error, reason) => {
+                console.log(error);
+                console.log(reason);
+            });
+
+            webSocket.on("disconnect", (error) => {
+                console.log(error);
+            });
+        });
+
+        this.io.on("error", (error) => {
+            console.log(error);
+        });
+
+        this.io.on("disconnect", (error) => {
+            console.log(error);
         });
     }
 
