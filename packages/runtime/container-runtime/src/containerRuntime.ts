@@ -539,8 +539,8 @@ class ScheduleManagerCore {
         // 2. resumed when batch end comes in (batchMetadata === true case below)
 
         if (batchMetadata) {
-            assert(this.currentBatchClientId === undefined, 0x29e /* "there can't be active batch" */);
-            assert(!this.localPaused, 0x29f /* "we should be processing ops when there is no active batch" */);
+            // assert(this.currentBatchClientId === undefined, 0x29e /* "there can't be active batch" */);
+            // assert(!this.localPaused, 0x29f /* "we should be processing ops when there is no active batch" */);
             this.pauseSequenceNumber = message.sequenceNumber;
             this.currentBatchClientId = message.clientId;
             // Start of the batch
@@ -2346,7 +2346,9 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
                     /* batch: */ this._flushMode === FlushMode.TurnBased,
                     opMetadataInternal);
             } else {
-                clientSequenceNumber = this.submitChunkedMessage(type, serializedContent, maxOpSize);
+                clientSequenceNumber = this.submitChunkedMessage(
+                    type, serializedContent, maxOpSize,
+                     /* batch: */ this._flushMode === FlushMode.TurnBased, opMetadataInternal);
             }
         }
 
@@ -2364,7 +2366,8 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
         }
     }
 
-    private submitChunkedMessage(type: ContainerMessageType, content: string, maxOpSize: number): number {
+    private submitChunkedMessage(
+        type: ContainerMessageType, content: string, maxOpSize: number, batch: boolean, appData?: any): number {
         const contentLength = content.length;
         const chunkN = Math.floor((contentLength - 1) / maxOpSize) + 1;
         let offset = 0;
@@ -2380,7 +2383,8 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
             clientSequenceNumber = this.submitRuntimeMessage(
                 ContainerMessageType.ChunkedOp,
                 chunkedOp,
-                false);
+                batch,
+                appData);
         }
         return clientSequenceNumber;
     }
