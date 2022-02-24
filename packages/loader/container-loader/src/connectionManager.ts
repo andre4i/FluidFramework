@@ -52,6 +52,8 @@ import {
 import {
     TelemetryLogger,
     normalizeError,
+    MonitoringContext,
+    loggerToMonitoringContext,
 } from "@fluidframework/telemetry-utils";
 import {
     ReconnectMode,
@@ -122,10 +124,38 @@ class NoDeltaStream
     public dispose() { this._disposed = true; }
 }
 
+class ContainerOpErrorState {
+    public constructor(
+        private readonly error: IAnyDriverError | undefined,
+        private readonly outgoingMessages: IDocumentMessage[] | undefined,
+    ) { }
+
+    public hasPendingOps(): boolean {
+        return this.outgoingMessages !== undefined;
+    }
+
+    public equals(other: ContainerOpErrorState): boolean {
+        if (this.error !== other.error) {
+            return false;
+        }
+
+        if (this.outgoingMessages === undefined || other.outgoingMessages === undefined) {
+            return this.outgoingMessages === undefined && other.outgoingMessages === undefined;
+        }
+
+        return this.outgoingMessages.length === other.outgoingMessages.length
+            && this.outgoingMessages.every(
+                (val, index) => this.outgoingMessages !== undefined && val === this.outgoingMessages[index]);
+    }
+}
+
+const stopReconnectLoopsKey = "Fluid.Loader.ConnectionManager.StopReconnectLoops";
+const maxConsecutiveReconnectsKey = "Fluid.Loader.ConnectionManager.MaxConsecutiveReconnects";
+
 /**
  * Implementation of IConnectionManager, used by Container class
- * Implements constant connectivity to relay service, by reconnecting in case of loast connection or error.
- * Exposes various controls to influecen this process, including manual reconnects, forced read-only mode, etc.
+ * Implements constant connectivity to relay service, by reconnecting in case of lost connection or error.
+ * Exposes various controls to influenced this process, including manual reconnects, forced read-only mode, etc.
  */
 export class ConnectionManager implements IConnectionManager {
     /** Connection mode used when reconnecting on error or disconnect. */
@@ -172,6 +202,14 @@ export class ConnectionManager implements IConnectionManager {
     public get connectionVerboseProps() { return this._connectionVerboseProps; }
 
     public readonly clientDetails: IClientDetails;
+
+    private consecutiveReconnects: number = 0;
+    private containerOpErrorState: ContainerOpErrorState | undefined;
+    private readonly mc: MonitoringContext;
+
+    private defaultMaxConsecutiveReconnects = 30;
+    private stopReconnectLoops: boolean;
+    private maxConsecutiveReconnects: number;
 
     /**
      * The current connection mode, initially read.
@@ -288,12 +326,16 @@ export class ConnectionManager implements IConnectionManager {
         private readonly serviceProvider: () => IDocumentService | undefined,
         private client: IClient,
         reconnectAllowed: boolean,
-        private readonly logger: ITelemetryLogger,
+        logger: ITelemetryLogger,
         private readonly props: IConnectionManagerFactoryArgs,
     ) {
+        this.mc = loggerToMonitoringContext(logger);
         this.clientDetails = this.client.details;
         this.defaultReconnectionMode = this.client.mode;
         this._reconnectMode = reconnectAllowed ? ReconnectMode.Enabled : ReconnectMode.Never;
+        this.maxConsecutiveReconnects =
+            this.mc.config.getNumber(maxConsecutiveReconnectsKey) ?? this.defaultMaxConsecutiveReconnects;
+        this.stopReconnectLoops = this.mc.config.getBoolean(stopReconnectLoopsKey) ?? false;
 
         // Outbound message queue. The outbound queue is represented as a queue of an array of ops. Ops contained
         // within an array *must* fit within the maxMessageSize and are guaranteed to be ordered sequentially.
@@ -371,7 +413,7 @@ export class ConnectionManager implements IConnectionManager {
      */
      public forceReadonly(readonly: boolean) {
         if (readonly !== this._forceReadonly) {
-            this.logger.sendTelemetryEvent({
+            this.mc.logger.sendTelemetryEvent({
                 eventName: "ForceReadOnly",
                 value: readonly,
             });
@@ -392,7 +434,7 @@ export class ConnectionManager implements IConnectionManager {
                 if (this.shouldJoinWrite()) {
                     // If we have pending changes, then we will never send them - it smells like
                     // host logic error.
-                    this.logger.sendErrorEvent({ eventName: "ForceReadonlyPendingChanged" });
+                    this.mc.logger.sendErrorEvent({ eventName: "ForceReadonlyPendingChanged" });
                 }
 
                 reconnect = this.disconnectFromDeltaStream("Force readonly");
@@ -473,7 +515,7 @@ export class ConnectionManager implements IConnectionManager {
 
                 if (connection.disposed) {
                     // Nobody observed this connection, so drop it on the floor and retry.
-                    this.logger.sendTelemetryEvent({ eventName: "ReceivedClosedConnection" });
+                    this.mc.logger.sendTelemetryEvent({ eventName: "ReceivedClosedConnection" });
                     connection = undefined;
                 }
             } catch (origError) {
@@ -495,7 +537,7 @@ export class ConnectionManager implements IConnectionManager {
                 // and unfortunately there is no reliable way to detect that.
                 if (connectRepeatCount === 1) {
                     logNetworkFailure(
-                        this.logger,
+                        this.mc.logger,
                         {
                             delay: delayMs, // milliseconds
                             eventName: "DeltaConnectionFailureToConnect",
@@ -518,7 +560,7 @@ export class ConnectionManager implements IConnectionManager {
 
         // If we retried more than once, log an event about how long it took
         if (connectRepeatCount > 1) {
-            this.logger.sendTelemetryEvent(
+            this.mc.logger.sendTelemetryEvent(
                 {
                     eventName: "MultipleDeltaConnectionFailures",
                     attempts: connectRepeatCount,
@@ -533,7 +575,7 @@ export class ConnectionManager implements IConnectionManager {
 
     /**
      * Start the connection. Any error should result in container being close.
-     * And report the error if it excape for any reason.
+     * And report the error if it escape for any reason.
      * @param args - The connection arguments
      */
      private triggerConnect(connectionMode: ConnectionMode) {
@@ -692,6 +734,28 @@ export class ConnectionManager implements IConnectionManager {
         requestedMode: ConnectionMode,
         error: IAnyDriverError,
     ) {
+        const currentContainerOpErrorState = new ContainerOpErrorState(error, this._outbound.peek());
+        if (this.containerOpErrorState === undefined || this.containerOpErrorState !== currentContainerOpErrorState) {
+            this.consecutiveReconnects = 1;
+            this.containerOpErrorState = currentContainerOpErrorState;
+        } else {
+            this.consecutiveReconnects++;
+        }
+
+         if (this.consecutiveReconnects === this.maxConsecutiveReconnects) {
+             this.mc.logger.sendErrorEvent({
+                 eventName: "MaxReconnectsWithSameError",
+                 count: this.consecutiveReconnects,
+             }, error);
+
+             if (this.stopReconnectLoops) {
+                 this.props.closeHandler(new GenericError(
+                     "MaxReconnectsWithSameError",
+                     error,
+                     { count: this.consecutiveReconnects }));
+             }
+         }
+
         this.reconnect(
             requestedMode,
             error.message,
@@ -722,7 +786,7 @@ export class ConnectionManager implements IConnectionManager {
         // Any truly fatal error state will result in container close upon attempted reconnect,
         // which is a preferable to closing abruptly when a live connection fails.
         if (error !== undefined && !error.canRetry) {
-            this.logger.sendTelemetryEvent({
+            this.mc.logger.sendTelemetryEvent({
                 eventName: "reconnectingDespiteFatalError",
                 reconnectMode: this.reconnectMode,
              }, error);
@@ -788,7 +852,7 @@ export class ConnectionManager implements IConnectionManager {
         if (this.connection !== undefined) {
             this.connection.submitSignal(content);
         } else {
-            this.logger.sendErrorEvent({ eventName: "submitSignalDisconnected" });
+            this.mc.logger.sendErrorEvent({ eventName: "submitSignalDisconnected" });
         }
     }
 
@@ -843,7 +907,7 @@ export class ConnectionManager implements IConnectionManager {
             const clientId = JSON.parse(systemLeaveMessage.data) as string;
             if (clientId === this.clientId) {
                 // We have been kicked out from quorum
-                this.logger.sendPerformanceEvent({ eventName: "ReadConnectionTransition" });
+                this.mc.logger.sendPerformanceEvent({ eventName: "ReadConnectionTransition" });
                 this.downgradedConnection = true;
             }
         }

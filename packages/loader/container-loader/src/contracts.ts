@@ -126,8 +126,8 @@ export interface IConnectionManagerFactoryArgs {
     readonly reconnectionDelayHandler: (delayMs: number, error: unknown) => void,
 
     /**
-     * Called by connection manager whwnever critical error happens and container should be closed.
-     * Expects dispose() call in respose to this call.
+     * Called by connection manager whenever critical error happens and container should be closed.
+     * Expects dispose() call in response to this call.
      */
     readonly closeHandler: (error?: any) => void,
 
