@@ -22,7 +22,7 @@ export interface IFluidPackageEnvironment {
 
         /**
          * General access for extended fields as specific usages will
-         * likely have additional infornamation like a definition
+         * likely have additional information like a definition
          * of Library, the entrypoint for umd packages
          */
         [key: string]: unknown;
@@ -37,7 +37,7 @@ export interface IFluidPackageEnvironment {
  */
 export interface IFluidPackage {
     /**
-     * The name of the package that this code represnets
+     * The name of the package that this code represents
      */
     name: string;
     /**
@@ -52,7 +52,7 @@ export interface IFluidPackage {
     };
     /**
      * General access for extended fields as specific usages will
-     * likely have additional infornamation like a definition of
+     * likely have additional information like a definition of
      * compatible versions, or deployment information like rings or rollouts.
      */
     [key: string]: unknown;

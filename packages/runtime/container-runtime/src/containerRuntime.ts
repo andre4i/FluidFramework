@@ -233,7 +233,7 @@ export interface ISummaryConfigurationHeuristics extends ISummaryBaseConfigurati
      */
      maxOps: number;
     /**
-     * Defnines the minimum number of Ops, since the last received Ack, that can be allowed
+     * Defines the minimum number of Ops, since the last received Ack, that can be allowed
      * before running the last summary.
      */
     minOpsForLastSummaryAttempt: number;

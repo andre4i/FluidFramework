@@ -14,7 +14,7 @@ import {
 import { assert, performance } from "@fluidframework/common-utils";
 
 /**
- * We report various latency-related errors when waiting for op roundtrip takes longer than that amout of time.
+ * We report various latency-related errors when waiting for op roundtrip takes longer than that amount of time.
  */
 export const latencyThreshold = 5000;
 
