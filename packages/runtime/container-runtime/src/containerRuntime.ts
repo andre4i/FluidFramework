@@ -2644,14 +2644,15 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
                 ? calculateStats(summaryTree.tree[gcTreeKey])
                 : undefined;
 
+            const opTrackerState = this.opTracker.currentState(summaryRefSeqNum);
             const summaryStats: IGeneratedSummaryStats = {
                 dataStoreCount: this.dataStores.size,
                 summarizedDataStoreCount: this.dataStores.size - handleCount,
                 gcStateUpdatedDataStoreCount: summarizeResult.gcStats?.updatedDataStoreCount,
                 gcBlobNodeCount: gcSummaryTreeStats?.blobNodeCount,
                 gcTotalBlobsSize: gcSummaryTreeStats?.totalBlobSize,
-                opsSizesSinceLastSummary: this.opTracker.opsSizeAccumulator,
-                nonSystemOpsSinceLastSummary: this.opTracker.nonSystemOpCount,
+                opsSizesSinceLastSummary: opTrackerState?.opsSize ?? -1,
+                nonSystemOpsSinceLastSummary: opTrackerState?.nonSystemOpCount ?? -1,
                 summaryNumber,
                 ...partialStats,
             };
@@ -2724,7 +2725,7 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
             } as const;
 
             this.summarizerNode.completeSummary(handle);
-            this.opTracker.reset();
+            this.opTracker.reset(clientSequenceNumber);
             return submitData;
         } finally {
             // Cleanup wip summary in case of failure

@@ -11,20 +11,35 @@ import {
 } from "@fluidframework/protocol-definitions";
 import { isRuntimeMessage } from "@fluidframework/driver-utils";
 
-export class OpTracker {
-    /**
-     * Used for storing the message content size when
-     * the message is pushed onto the inbound queue.
-     */
-    private readonly messageSize = new Map<number, number>();
-    private _nonSystemOpCount: number = 0;
-    public get nonSystemOpCount(): number {
-        return this._nonSystemOpCount;
+export class OpTrackerState {
+    constructor(
+        public readonly nonSystemOpCount: number,
+        public readonly opsSize: number,
+    ) {}
+
+    delta(other: OpTrackerState) {
+        return new OpTrackerState(this.nonSystemOpCount - other.nonSystemOpCount, this.opsSize - other.opsSize);
     }
 
-    private _opsSizeAccumulator: number = 0;
-    public get opsSizeAccumulator(): number {
-        return this._opsSizeAccumulator;
+    update(nonSystemOpCount: number, opsSize: number) {
+        return new OpTrackerState(this.nonSystemOpCount + nonSystemOpCount, this.opsSize + opsSize);
+    }
+
+    static default = new OpTrackerState(0, 0);
+}
+
+export class OpTracker {
+    private readonly stateAtSequence = new Map<number, OpTrackerState>();
+    private lastResetSequence: number;
+
+    public currentState(sequenceNumber: number): OpTrackerState | undefined {
+        const older = this.stateAtSequence.get(this.lastResetSequence);
+        const newer = this.stateAtSequence.get(sequenceNumber);
+        if (older === undefined || newer === undefined) {
+            return undefined;
+        }
+
+        return older.delta(newer);
     }
 
     public constructor(
@@ -35,9 +50,7 @@ export class OpTracker {
             return;
         }
 
-        // Record the message content size when we receive it.
-        // We should not log this value, as summarization can happen between the time the message
-        // is received and until it is processed (the 'op' event).
+        this.lastResetSequence = deltaManager.lastSequenceNumber;
         deltaManager.inbound.on("push", (message: ISequencedDocumentMessage) => {
             // Some messages my already have string contents at this point,
             // so stringifying them again will add inaccurate overhead.
@@ -45,14 +58,19 @@ export class OpTracker {
                 message.contents :
                 JSON.stringify(message.contents);
             const messageData = OpTracker.messageHasData(message) ? message.data : "";
-            this.messageSize[OpTracker.messageId(message)] = messageContent.length + messageData.length;
-        });
+            const messageSize = messageContent.length + messageData.length;
 
-        deltaManager.on("op", (message: ISequencedDocumentMessage) => {
-            this._nonSystemOpCount += !isRuntimeMessage(message) ? 0 : 1;
             const id = OpTracker.messageId(message);
-            this._opsSizeAccumulator += this.messageSize[id] ?? 0;
-            this.messageSize.delete(id);
+            const prevId = id - 1;
+
+            if (this.stateAtSequence.size > 0 && this.stateAtSequence[prevId] === undefined) {
+                return;
+            }
+
+            const prev = this.stateAtSequence[prevId] === undefined ?
+                OpTrackerState.default : this.stateAtSequence[prevId];
+
+            this.stateAtSequence[id] = prev.update(isRuntimeMessage(message) ? 1 : 0, messageSize);
         });
     }
 
@@ -64,8 +82,8 @@ export class OpTracker {
         return (message as ISequencedDocumentSystemMessage).data !== undefined;
     }
 
-    public reset() {
-        this._nonSystemOpCount = 0;
-        this._opsSizeAccumulator = 0;
+    public reset(sequenceNumber: number) {
+        this.lastResetSequence = sequenceNumber;
+        this.stateAtSequence.clear();
     }
 }
