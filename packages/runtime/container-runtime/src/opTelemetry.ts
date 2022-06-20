@@ -46,11 +46,12 @@ export class OpTracker {
         deltaManager: IDeltaManager<ISequencedDocumentMessage, IDocumentMessage>,
         disabled: boolean,
     ) {
+        this.lastResetSequence = deltaManager.lastSequenceNumber;
+
         if (disabled) {
             return;
         }
 
-        this.lastResetSequence = deltaManager.lastSequenceNumber;
         deltaManager.inbound.on("push", (message: ISequencedDocumentMessage) => {
             // Some messages my already have string contents at this point,
             // so stringifying them again will add inaccurate overhead.
