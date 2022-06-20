@@ -30,24 +30,23 @@ export class OpTrackerState {
 
 export class OpTracker {
     private readonly stateAtSequence = new Map<number, OpTrackerState>();
-    private lastResetSequence: number;
+    private lastSummarySequence: number = 0;
 
     public currentState(sequenceNumber: number): OpTrackerState | undefined {
-        const older = this.stateAtSequence.get(this.lastResetSequence);
+        const firstObservedMessageSequence = this.stateAtSequence.keys().next().value ?? -Infinity;
+        const older = this.stateAtSequence.get(Math.max(firstObservedMessageSequence, this.lastSummarySequence));
         const newer = this.stateAtSequence.get(sequenceNumber);
         if (older === undefined || newer === undefined) {
             return undefined;
         }
 
-        return older.delta(newer);
+        return newer.delta(older);
     }
 
     public constructor(
         deltaManager: IDeltaManager<ISequencedDocumentMessage, IDocumentMessage>,
         disabled: boolean,
     ) {
-        this.lastResetSequence = deltaManager.lastSequenceNumber;
-
         if (disabled) {
             return;
         }
@@ -64,14 +63,12 @@ export class OpTracker {
             const id = OpTracker.messageId(message);
             const prevId = id - 1;
 
-            if (this.stateAtSequence.size > 0 && this.stateAtSequence[prevId] === undefined) {
+            if (this.stateAtSequence.size > 0 && this.stateAtSequence.get(prevId) === undefined) {
                 return;
             }
 
-            const prev = this.stateAtSequence[prevId] === undefined ?
-                OpTrackerState.default : this.stateAtSequence[prevId];
-
-            this.stateAtSequence[id] = prev.update(isRuntimeMessage(message) ? 1 : 0, messageSize);
+            const prev = this.stateAtSequence.get(prevId) ?? OpTrackerState.default;
+            this.stateAtSequence.set(id, prev.update(isRuntimeMessage(message) ? 1 : 0, messageSize));
         });
     }
 
@@ -84,7 +81,7 @@ export class OpTracker {
     }
 
     public reset(sequenceNumber: number) {
-        this.lastResetSequence = sequenceNumber;
+        this.lastSummarySequence = sequenceNumber;
         this.stateAtSequence.clear();
     }
 }
