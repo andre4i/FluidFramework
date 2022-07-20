@@ -42,7 +42,7 @@ class LocalQuorum extends TypedEventEmitter<IQuorumEvents> implements IQuorum {
 
     constructor(
         quorumSnapshot: IQuorumSnapshot,
-        private readonly sendProposal: (key: string, value: any) => number,
+        // private readonly sendProposal: (key: string, value: any) => number,
     ) {
         super();
 
@@ -50,6 +50,8 @@ class LocalQuorum extends TypedEventEmitter<IQuorumEvents> implements IQuorum {
             const proposal = pair[1];
             this.proposals.set(proposal.key, proposal.value);
         }
+
+        this.emit("addMember", );
     }
 
     getMembers(): Map<string, ISequencedClient> {
@@ -66,11 +68,11 @@ class LocalQuorum extends TypedEventEmitter<IQuorumEvents> implements IQuorum {
 
     async propose(key: string, value: any): Promise<void> {
         this.proposals.set(key, value);
-        this.emit("addProposal", {
-            sequenceNumber: this.sendProposal(key, value),
-            key,
-            value,
-        });
+        // this.emit("addProposal", {
+        //     sequenceNumber: this.sendProposal(key, value),
+        //     key,
+        //     value,
+        // });
         return new Promise<void>(() => {});
     }
 
@@ -122,6 +124,6 @@ export const emptyProtocolHandlerBuilder: ProtocolHandlerBuilder = (
     sendProposal: (key: string, value: any) => number,
 ): IProtocolHandler => new EmptyProtocolHandler(
     new EmptyAudience(),
-    new LocalQuorum(snapshot, sendProposal),
+    new LocalQuorum(snapshot /* , sendProposal */),
     attributes,
     snapshot);
