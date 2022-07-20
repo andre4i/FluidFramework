@@ -15,6 +15,7 @@ import { IRequest } from "@fluidframework/core-interfaces";
 import { IDocumentServiceFactory, IUrlResolver } from "@fluidframework/driver-definitions";
 import { ITelemetryBaseLogger } from "@fluidframework/common-definitions";
 import { fluidEntryPoint, LocalCodeLoader } from "./localCodeLoader";
+import { emptyProtocolHandlerBuilder } from "./protocol";
 
 /**
  * Creates a loader with the given package entries and driver.
@@ -38,6 +39,7 @@ export function createLoader(
         codeLoader,
         logger,
         options,
+        protocolHandlerBuilder: emptyProtocolHandlerBuilder,
     });
 }
 
