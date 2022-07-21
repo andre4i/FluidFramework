@@ -38,20 +38,29 @@ class EmptyAudience extends EventEmitter implements IAudienceOwner {
 
 class LocalQuorum extends TypedEventEmitter<IQuorumEvents> implements IQuorum {
     disposed: boolean = false;
-    private readonly proposals = new Map<string, any>();
+    private static readonly noClientId = "local";
 
-    constructor(
-        quorumSnapshot: IQuorumSnapshot,
-        // private readonly sendProposal: (key: string, value: any) => number,
-    ) {
+    private readonly proposals = new Map<string, any>();
+    private clientId: string = LocalQuorum.noClientId;
+
+    constructor(quorumSnapshot: IQuorumSnapshot) {
         super();
 
         for (const pair of quorumSnapshot.values) {
             const proposal = pair[1];
             this.proposals.set(proposal.key, proposal.value);
         }
+    }
 
-        this.emit("addMember", );
+    connectLocalClient(clientId: string | undefined) {
+        this.clientId = clientId ?? LocalQuorum.noClientId;
+        this.emit("AddMember", clientId);
+    }
+
+    disconnectLocalClient(clientId: string | undefined) {
+        if (this.clientId === clientId) {
+            this.emit("RemoveMember", clientId);
+        }
     }
 
     getMembers(): Map<string, ISequencedClient> {
@@ -68,11 +77,6 @@ class LocalQuorum extends TypedEventEmitter<IQuorumEvents> implements IQuorum {
 
     async propose(key: string, value: any): Promise<void> {
         this.proposals.set(key, value);
-        // this.emit("addProposal", {
-        //     sequenceNumber: this.sendProposal(key, value),
-        //     key,
-        //     value,
-        // });
         return new Promise<void>(() => {});
     }
 
@@ -88,12 +92,10 @@ class LocalQuorum extends TypedEventEmitter<IQuorumEvents> implements IQuorum {
 class EmptyProtocolHandler implements IProtocolHandler {
     constructor(
         public readonly audience: IAudienceOwner,
-        public readonly quorum: IQuorum,
+        public readonly quorum: LocalQuorum,
         public readonly attributes: IDocumentAttributes,
         public readonly initialSnapshot: IQuorumSnapshot,
-    ) {
-
-    }
+    ) { }
 
     public snapshot(): IQuorumSnapshot {
         return this.initialSnapshot;
@@ -113,7 +115,14 @@ class EmptyProtocolHandler implements IProtocolHandler {
         };
     }
 
-    setConnectionState(_connected: boolean, _clientId: string | undefined) {}
+    setConnectionState(connected: boolean, clientId: string | undefined) {
+        if (connected) {
+            this.quorum.connectLocalClient(clientId);
+        } else {
+            this.quorum.disconnectLocalClient(clientId);
+        }
+    }
+
     close(): void {}
     processSignal(_message: ISignalMessage) {}
 }
@@ -121,9 +130,8 @@ class EmptyProtocolHandler implements IProtocolHandler {
 export const emptyProtocolHandlerBuilder: ProtocolHandlerBuilder = (
     attributes: IDocumentAttributes,
     snapshot: IQuorumSnapshot,
-    sendProposal: (key: string, value: any) => number,
 ): IProtocolHandler => new EmptyProtocolHandler(
     new EmptyAudience(),
-    new LocalQuorum(snapshot /* , sendProposal */),
+    new LocalQuorum(snapshot),
     attributes,
     snapshot);

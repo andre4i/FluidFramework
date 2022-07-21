@@ -21,6 +21,7 @@ import { LoaderContainerTracker } from "./loaderContainerTracker";
 import { fluidEntryPoint, LocalCodeLoader } from "./localCodeLoader";
 import { createAndAttachContainer } from "./localLoader";
 import { ChannelFactoryRegistry } from "./testFluidObject";
+import { emptyProtocolHandlerBuilder } from "./protocol";
 
 const defaultCodeDetails: IFluidCodeDetails = {
     package: "defaultTestPackage",
@@ -281,6 +282,7 @@ export class TestObjectProvider implements ITestObjectProvider {
             codeLoader: loaderProps?.codeLoader ?? new LocalCodeLoader(packageEntries),
             urlResolver: loaderProps?.urlResolver ?? this.urlResolver,
             documentServiceFactory: loaderProps?.documentServiceFactory ?? this.documentServiceFactory,
+            protocolHandlerBuilder: emptyProtocolHandlerBuilder,
         });
         this._loaderContainerTracker.add(loader);
         return loader;
