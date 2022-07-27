@@ -380,7 +380,7 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
 
     // Tells if container can reconnect on losing fist connection
     // If false, container gets closed on loss of connection.
-    private readonly _canReconnect: boolean = true;
+    private readonly _canReconnect: boolean = false;
 
     private readonly mc: MonitoringContext;
 
@@ -1683,7 +1683,8 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
         if (this._context?.disposed === false) {
             this.context.setConnectionState(state, this.clientId);
         }
-        this.protocolHandler.setConnectionState(state, this.clientId);
+
+        this.protocolHandler.propagateConnectionState(this.connectionState, this.clientId);
         raiseConnectedEvent(this.mc.logger, this, state, this.clientId);
 
         if (logOpsOnReconnect) {

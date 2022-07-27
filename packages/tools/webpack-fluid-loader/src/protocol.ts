@@ -5,7 +5,7 @@
 
 import { EventEmitter } from "events";
 import { IAudienceOwner } from "@fluidframework/container-definitions";
-import { IProtocolHandler, ProtocolHandlerBuilder } from "@fluidframework/container-loader";
+import { ConnectionState, IProtocolHandler, ProtocolHandlerBuilder } from "@fluidframework/container-loader";
 import { IQuorumSnapshot, IScribeProtocolState } from "@fluidframework/protocol-base";
 import {
     IQuorum,
@@ -17,7 +17,7 @@ import {
     IQuorumEvents,
     ISequencedClient,
 } from "@fluidframework/protocol-definitions";
-import { TypedEventEmitter } from "@fluidframework/common-utils";
+import { TypedEventEmitter, unreachableCase } from "@fluidframework/common-utils";
 
 class EmptyAudience extends EventEmitter implements IAudienceOwner {
     getMembers(): Map<string, IClient> {
@@ -79,7 +79,6 @@ class LocalQuorum extends TypedEventEmitter<IQuorumEvents> implements IQuorum {
         const actualClientId = clientId ?? LocalQuorum.noClientId;
         if (this.members.get(actualClientId) !== undefined) {
             this.emit("removeMember", clientId);
-            this.members.delete(actualClientId);
         }
     }
 
@@ -133,6 +132,21 @@ class EmptyProtocolHandler implements IProtocolHandler {
             proposals: [],
             values: [],
         };
+    }
+
+    public propagateConnectionState(state: ConnectionState, clientId: string | undefined) {
+        switch (state) {
+            case ConnectionState.CatchingUp:
+            case ConnectionState.EstablishingConnection:
+            case ConnectionState.Connected:
+                this.setConnectionState(true /* connected */, clientId);
+                break;
+            case ConnectionState.Disconnected:
+                this.setConnectionState(false /* connected */, clientId);
+                break;
+            default:
+                unreachableCase(state);
+        }
     }
 
     setConnectionState(connected: boolean, clientId: string | undefined) {

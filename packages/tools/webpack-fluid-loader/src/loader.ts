@@ -303,7 +303,13 @@ export async function start(
             );
             assert(prefetched, 0x1eb /* "Snapshot should be prefetched!" */);
         }
-        container1 = await loader1.resolve({ url: documentUrl });
+        container1 = await loader1.resolve(
+            {
+                url: documentUrl,
+                headers: {
+                    "fluid-reconnect": false,
+                },
+            });
         containers.push(container1);
     }
 
@@ -354,7 +360,13 @@ export async function start(
         // Create a new request url from the resolvedUrl of the first container.
         assert(container1.resolvedUrl !== undefined, 0x31b /* container1.resolvedUrl is undefined */);
         const requestUrl2 = await urlResolver.getAbsoluteUrl(container1.resolvedUrl, "");
-        const container2 = await loader2.resolve({ url: requestUrl2 });
+        const container2 = await loader2.resolve(
+            {
+                url: requestUrl2,
+                headers: {
+                    "fluid-reconnect": false,
+                },
+            });
         containers.push(container2);
 
         await getFluidObjectAndRender(container2, fluidObjectUrl, rightDiv);
@@ -445,6 +457,9 @@ async function attachContainer(
     // using local resolver.
     const attachUrl = testOrderer ? new LocalResolver().createCreateNewRequest(documentId)
         : await urlResolver.createRequestForCreateNew(documentId);
+
+    attachUrl.headers = attachUrl.headers ?? {};
+    attachUrl.headers["fluid-reconnect"] = false;
 
     if (manualAttach) {
         // Create an "Attach Container" button that the user can click when they want to attach the container.
