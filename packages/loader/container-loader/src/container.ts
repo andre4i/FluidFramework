@@ -286,14 +286,14 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
                 canReconnect: loadOptions.canReconnect,
                 serializedContainerState: pendingLocalState,
             },
-            protocolHandlerBuilder);
+            protocolHandlerBuilder,
+            pendingLocalState,
+            loadOptions.version);
 
         return PerformanceEvent.timedExecAsync(
             container.mc.logger,
             { eventName: "Load" },
             async (event) => new Promise<Container>((resolve, reject) => {
-                const version = loadOptions.version;
-
                 const defaultMode: IContainerLoadMode = { opsBeforeReturn: "cached" };
                 // if we have pendingLocalState, anything we cached is not useful and we shouldn't wait for connection
                 // to return container, so ignore this value and use undefined for opsBeforeReturn
@@ -307,7 +307,7 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
                 };
                 container.on("closed", onClosed);
 
-                container.load(version, mode, pendingLocalState)
+                container.load(mode, pendingLocalState)
                     .finally(() => {
                         container.removeListener("closed", onClosed);
                     })
@@ -444,6 +444,9 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
     private _resolvedUrl: IFluidResolvedUrl | undefined;
     private attachStarted = false;
     private _dirtyContainer = false;
+    private _versionId: string | undefined;
+    private _attributes: IDocumentAttributes | undefined;
+    private _snapshot: ISnapshotTree | undefined;
 
     private lastVisible: number | undefined;
     private readonly visibilityEventHandler: (() => void) | undefined;
@@ -563,6 +566,8 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
         private readonly loader: Loader,
         config: IContainerConfig,
         private readonly protocolHandlerBuilder?: ProtocolHandlerBuilder,
+        readonly pendingLocalState?: IPendingContainerState,
+        readonly version?: string,
     ) {
         super((name, error) => {
             this.mc.logger.sendErrorEvent(
@@ -630,6 +635,8 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
             ... this.loader.services.options,
             summarizeProtocolTree,
         };
+
+        this.setupProtocolHandler(pendingLocalState, version).catch((error) => this.close(error));
 
         this.connectionStateHandler = new ConnectionStateHandler(
             {
@@ -730,6 +737,55 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
                 this.mc.logger.sendErrorEvent({ eventName: "RaiseConnectedEventError" }, error);
             });
         });
+    }
+
+    private async setupProtocolHandler(
+        pendingLocalState: IPendingContainerState | undefined,
+        version: string | undefined,
+    ) {
+        assert(this._resolvedUrl !== undefined, "Resolved url should be there");
+        this.service = await this.serviceFactory.createDocumentService(
+            this._resolvedUrl,
+            this.subLogger,
+            this.client.details.type === summarizerClientType,
+        );
+
+        if (!pendingLocalState) {
+            await this.connectStorageService();
+        } else {
+            // if we have pendingLocalState we can load without storage; don't wait for connection
+            this.connectStorageService().catch((error) => this.close(error));
+        }
+
+        const { snapshot, versionId } = pendingLocalState === undefined
+            ? await this.fetchSnapshotTree(version)
+            : { snapshot: undefined, versionId: undefined };
+
+        assert(snapshot !== undefined || pendingLocalState !== undefined, 0x237 /* "Snapshot should exist" */);
+        this._versionId = versionId;
+        this._snapshot = snapshot;
+
+        this._attributes = pendingLocalState === undefined
+            ? await this.getDocumentAttributes(this.storageService, snapshot)
+            : {
+                sequenceNumber: pendingLocalState.protocol.sequenceNumber,
+                minimumSequenceNumber: pendingLocalState.protocol.minimumSequenceNumber,
+                term: pendingLocalState.term,
+            };
+
+        this._protocolHandler = pendingLocalState === undefined
+            ? await this.initializeProtocolStateFromSnapshot(
+                this._attributes,
+                this.storageService,
+                snapshot,
+            ) : await this.initializeProtocolState(
+                this._attributes,
+                {
+                    members: pendingLocalState.protocol.members,
+                    proposals: pendingLocalState.protocol.proposals,
+                    values: pendingLocalState.protocol.values,
+                }, // pending IQuorumSnapshot
+            );
     }
 
     /**
@@ -1115,18 +1171,12 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
      *   - otherwise, version sha to load snapshot
      */
     private async load(
-        specifiedVersion: string | undefined,
         loadMode: IContainerLoadMode,
         pendingLocalState?: IPendingContainerState,
     ) {
         if (this._resolvedUrl === undefined) {
             throw new Error("Attempting to load without a resolved url");
         }
-        this.service = await this.serviceFactory.createDocumentService(
-            this._resolvedUrl,
-            this.subLogger,
-            this.client.details.type === summarizerClientType,
-        );
 
         // Ideally we always connect as "read" by default.
         // Currently that works with SPO & r11s, because we get "write" connection when connecting to non-existing file.
@@ -1145,70 +1195,35 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
             this.connectToDeltaStream(connectionArgs);
         }
 
-        if (!pendingLocalState) {
-            await this.connectStorageService();
-        } else {
-            // if we have pendingLocalState we can load without storage; don't wait for connection
-            this.connectStorageService().catch((error) => this.close(error));
-        }
-
         this._attachState = AttachState.Attached;
-
-        // Fetch specified snapshot.
-        const { snapshot, versionId } = pendingLocalState === undefined
-            ? await this.fetchSnapshotTree(specifiedVersion)
-            : { snapshot: undefined, versionId: undefined };
-        assert(snapshot !== undefined || pendingLocalState !== undefined, 0x237 /* "Snapshot should exist" */);
-
-        const attributes: IDocumentAttributes = pendingLocalState === undefined
-            ? await this.getDocumentAttributes(this.storageService, snapshot)
-            : {
-                sequenceNumber: pendingLocalState.protocol.sequenceNumber,
-                minimumSequenceNumber: pendingLocalState.protocol.minimumSequenceNumber,
-                term: pendingLocalState.term,
-            };
-
         let opsBeforeReturnP: Promise<void> | undefined;
 
+        assert(this._attributes !== undefined, "Document attributes should be initialized");
         // Attach op handlers to finish initialization and be able to start processing ops
         // Kick off any ops fetching if required.
         switch (loadMode.opsBeforeReturn) {
             case undefined:
                 // Start prefetch, but not set opsBeforeReturnP - boot is not blocked by it!
                 // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                this.attachDeltaManagerOpHandler(attributes, loadMode.deltaConnection !== "none" ? "all" : "none");
+                this.attachDeltaManagerOpHandler(
+                    this._attributes,
+                    loadMode.deltaConnection !== "none" ? "all" : "none");
                 break;
             case "cached":
-                opsBeforeReturnP = this.attachDeltaManagerOpHandler(attributes, "cached");
+                opsBeforeReturnP = this.attachDeltaManagerOpHandler(this._attributes, "cached");
                 break;
             case "all":
-                opsBeforeReturnP = this.attachDeltaManagerOpHandler(attributes, "all");
+                opsBeforeReturnP = this.attachDeltaManagerOpHandler(this._attributes, "all");
                 break;
             default:
                 unreachableCase(loadMode.opsBeforeReturn);
         }
 
-        // ...load in the existing quorum
-        // Initialize the protocol handler
-        this._protocolHandler = pendingLocalState === undefined
-            ? await this.initializeProtocolStateFromSnapshot(
-                attributes,
-                this.storageService,
-                snapshot,
-            ) : await this.initializeProtocolState(
-                attributes,
-                {
-                    members: pendingLocalState.protocol.members,
-                    proposals: pendingLocalState.protocol.proposals,
-                    values: pendingLocalState.protocol.values,
-                }, // pending IQuorumSnapshot
-            );
-
         const codeDetails = this.getCodeDetailsFromQuorum();
         await this.instantiateContext(
             true, // existing
             codeDetails,
-            snapshot,
+            this._snapshot,
             pendingLocalState?.pendingRuntimeState,
         );
 
@@ -1259,8 +1274,8 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
         this.setLoaded();
 
         return {
-            sequenceNumber: attributes.sequenceNumber,
-            version: versionId,
+            sequenceNumber: this._attributes.sequenceNumber,
+            version: this._versionId,
             dmLastProcessedSeqNumber: this._deltaManager.lastSequenceNumber,
             dmLastKnownSeqNumber: this._deltaManager.lastKnownSeqNumber,
         };

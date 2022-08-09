@@ -56,7 +56,7 @@ export enum ConnectionState {
 
 // @public (undocumented)
 export class Container extends EventEmitterWithErrorHandling<IContainerEvents> implements IContainer {
-    constructor(loader: Loader, config: IContainerConfig, protocolHandlerBuilder?: ProtocolHandlerBuilder | undefined);
+    constructor(loader: Loader, config: IContainerConfig, protocolHandlerBuilder?: ProtocolHandlerBuilder | undefined, pendingLocalState?: IPendingContainerState | undefined, version?: string | undefined);
     // (undocumented)
     attach(request: IRequest): Promise<void>;
     // (undocumented)
@@ -99,6 +99,8 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
     // (undocumented)
     readonly options: ILoaderOptions;
     // (undocumented)
+    readonly pendingLocalState?: IPendingContainerState | undefined;
+    // (undocumented)
     proposeCodeDetails(codeDetails: IFluidCodeDetails): Promise<boolean>;
     // (undocumented)
     get readOnlyInfo(): ReadOnlyInfo;
@@ -115,6 +117,8 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
     get storage(): IDocumentStorageService;
     // (undocumented)
     subLogger: TelemetryLogger;
+    // (undocumented)
+    readonly version?: string | undefined;
     // (undocumented)
     static version: string;
 }
