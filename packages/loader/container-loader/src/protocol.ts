@@ -27,6 +27,7 @@ export type ProtocolHandlerBuilder = (
     snapshot: IQuorumSnapshot,
     sendProposal: (key: string, value: any) => number,
     initialClients: ISignalClient[],
+    protocolHandler?: IProtocolHandler,
 ) => IProtocolHandler;
 
 export interface IProtocolHandler extends IBaseProtocolHandler {

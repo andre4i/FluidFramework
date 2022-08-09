@@ -16,6 +16,7 @@ import {
     IClient,
     IQuorumEvents,
     ISequencedClient,
+    ISignalClient,
 } from "@fluidframework/protocol-definitions";
 import { TypedEventEmitter } from "@fluidframework/common-utils";
 
@@ -48,10 +49,6 @@ class LocalQuorum extends TypedEventEmitter<IQuorumEvents> implements IQuorum {
         for (const pair of quorumSnapshot.values) {
             const proposal = pair[1];
             this.proposals.set(proposal.key, proposal.value);
-        }
-
-        for (const pair of quorumSnapshot.members) {
-            this.connectClient(pair[0], pair[1]);
         }
     }
 
@@ -116,6 +113,15 @@ class LocalQuorum extends TypedEventEmitter<IQuorumEvents> implements IQuorum {
     get(key: string): any {
         return this.proposals.get(key);
     }
+
+    add(snapshot: IQuorumSnapshot): LocalQuorum {
+        for (const pair of snapshot.values) {
+            const proposal = pair[1];
+            this.proposals.set(proposal.key, proposal.value);
+        }
+
+        return this;
+    }
 }
 
 class EmptyProtocolHandler implements IProtocolHandler {
@@ -163,8 +169,14 @@ class EmptyProtocolHandler implements IProtocolHandler {
 export const emptyProtocolHandlerBuilder: ProtocolHandlerBuilder = (
     attributes: IDocumentAttributes,
     snapshot: IQuorumSnapshot,
-): IProtocolHandler => new EmptyProtocolHandler(
-    new EmptyAudience(),
-    new LocalQuorum(snapshot),
-    attributes,
-    snapshot);
+    _sendProposal: (key: string, value: any) => number,
+    _initialClients: ISignalClient[],
+    protocolHandler?: IProtocolHandler,
+): IProtocolHandler => {
+    const existingQuorum = (protocolHandler?.quorum as LocalQuorum);
+    return new EmptyProtocolHandler(
+        new EmptyAudience(),
+        existingQuorum !== undefined ? existingQuorum.add(snapshot) : new LocalQuorum(snapshot),
+        attributes,
+        snapshot);
+};

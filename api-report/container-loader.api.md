@@ -226,7 +226,7 @@ export class Loader implements IHostLoader {
 }
 
 // @public
-export type ProtocolHandlerBuilder = (attributes: IDocumentAttributes, snapshot: IQuorumSnapshot, sendProposal: (key: string, value: any) => number, initialClients: ISignalClient[]) => IProtocolHandler;
+export type ProtocolHandlerBuilder = (attributes: IDocumentAttributes, snapshot: IQuorumSnapshot, sendProposal: (key: string, value: any) => number, initialClients: ISignalClient[], protocolHandler?: IProtocolHandler) => IProtocolHandler;
 
 // @public (undocumented)
 export class RelativeLoader implements ILoader {

@@ -631,6 +631,23 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
             summarizeProtocolTree,
         };
 
+        if (this.protocolHandlerBuilder !== undefined) {
+            this._protocolHandler = this.protocolHandlerBuilder(
+                {
+                    sequenceNumber: detachedContainerRefSeqNumber,
+                    term: 1,
+                    minimumSequenceNumber: 0,
+                }, // IDocumentAttributes
+                {
+                    members: [],
+                    proposals: [],
+                    values: [],
+                }, // IQuorumSnapShot
+                (key, value) => this.submitMessage(MessageType.Propose, { key, value }),
+                [],
+            );
+        }
+
         this.connectionStateHandler = new ConnectionStateHandler(
             {
                 quorumClients: () => this._protocolHandler?.quorum,
@@ -1409,14 +1426,20 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
         attributes: IDocumentAttributes,
         quorumSnapshot: IQuorumSnapshot,
     ): Promise<IProtocolHandler> {
-        const protocolHandlerBuilder =
-            this.protocolHandlerBuilder ?? ((...args) => new ProtocolHandler(...args, new Audience()));
-        const protocol = protocolHandlerBuilder(
-            attributes,
-            quorumSnapshot,
-            (key, value) => this.submitMessage(MessageType.Propose, { key, value }),
-            this._initialClients ?? [],
-        );
+        const protocol = this.protocolHandlerBuilder !== undefined ?
+            this.protocolHandlerBuilder(
+                attributes,
+                quorumSnapshot,
+                (key, value) => this.submitMessage(MessageType.Propose, { key, value }),
+                this._initialClients ?? [],
+                this._protocolHandler,
+            ) :
+            new ProtocolHandler(
+                attributes,
+                quorumSnapshot,
+                (key, value) => this.submitMessage(MessageType.Propose, { key, value }),
+                this._initialClients ?? [],
+                new Audience());
 
         this._initialClients = undefined;
 
