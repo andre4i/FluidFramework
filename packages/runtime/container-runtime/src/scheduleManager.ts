@@ -19,20 +19,20 @@ type IRuntimeMessageMetadata = undefined | {
 };
 
 /**
- * The internal batch status
+ * The internal state of the batch schedule
  *
  * Individual - processing an individual message
  * Batch - processing a message which is part of a batch
  * Error - encountered an error between processing ops
  * None - In between batches or individual messages
  */
-type ProcessingState = "Individual" | "Batch" | "Error" | "None";
+type ScheduleState = "Individual" | "Batch" | "Error" | "None";
 
 /**
  * Relative to a batch, a message can be:
  *
- * StartOfBatch - first message in a batch, marking the start
- * EndOfBatch - last message in a batch, marking the end
+ * StartOfBatch - the first message in a batch, marking the start
+ * EndOfBatch - the last message in a batch, marking the end
  * Individual - part of a batch (including a one message batch)
  */
 type MessageBatchState = "StartOfBatch" | "EndOfBatch" | "Individual";
@@ -57,7 +57,7 @@ const messageBatchState = (message: ISequencedDocumentMessage): MessageBatchStat
  */
 export class ScheduleManager {
     private readonly deltaScheduler: DeltaScheduler;
-    private state: ProcessingState = "None";
+    private state: ScheduleState = "None";
 
     constructor(
         private readonly deltaManager: IDeltaManager<ISequencedDocumentMessage, IDocumentMessage>,
