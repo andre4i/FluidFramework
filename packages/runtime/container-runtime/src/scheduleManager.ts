@@ -7,7 +7,7 @@ import { IDeltaManager } from "@fluidframework/container-definitions";
 import { IDocumentMessage, ISequencedDocumentMessage } from "@fluidframework/protocol-definitions";
 import { ITelemetryLogger } from "@fluidframework/common-definitions";
 import { ChildLogger } from "@fluidframework/telemetry-utils";
-import { assert, performance } from "@fluidframework/common-utils";
+import { assert, performance, unreachableCase } from "@fluidframework/common-utils";
 import { isUnpackedRuntimeMessage } from "@fluidframework/driver-utils";
 import { DataCorruptionError, extractSafePropertiesFromMessage } from "@fluidframework/container-utils";
 import { DeltaScheduler } from "./deltaScheduler";
@@ -19,6 +19,36 @@ type IRuntimeMessageMetadata = undefined | {
 };
 
 /**
+ * The internal batch status
+ *
+ * Individual - processing an individual message
+ * Batch - processing a message which is part of a batch
+ * Error - encountered an error between processing ops
+ * None - In between batches or individual messages
+ */
+type ProcessingState = "Individual" | "Batch" | "Error" | "None";
+
+/**
+ * Relative to a batch, a message can be:
+ *
+ * StartOfBatch - first message in a batch, marking the start
+ * EndOfBatch - last message in a batch, marking the end
+ * Individual - part of a batch (including a one message batch)
+ */
+type MessageBatchState = "StartOfBatch" | "EndOfBatch" | "Individual";
+
+const messageMetadata = (message: ISequencedDocumentMessage): IRuntimeMessageMetadata | undefined =>
+    message.metadata as IRuntimeMessageMetadata;
+
+const messageBatchState = (message: ISequencedDocumentMessage): MessageBatchState => {
+    switch (messageMetadata(message)?.batch) {
+        case true: return "StartOfBatch";
+        case false: return "EndOfBatch";
+        default: return "Individual";
+    }
+};
+
+/**
  * This class has the following responsibilities:
  * 1. It tracks batches as we process ops and raises "batchBegin" and "batchEnd" events.
  *    As part of it, it validates batch correctness (i.e. no system ops in the middle of batch)
@@ -27,8 +57,7 @@ type IRuntimeMessageMetadata = undefined | {
  */
 export class ScheduleManager {
     private readonly deltaScheduler: DeltaScheduler;
-    private batchClientId: string | undefined;
-    private hitError = false;
+    private state: ProcessingState = "None";
 
     constructor(
         private readonly deltaManager: IDeltaManager<ISequencedDocumentMessage, IDocumentMessage>,
@@ -43,46 +72,60 @@ export class ScheduleManager {
     }
 
     public beforeOpProcessing(message: ISequencedDocumentMessage) {
-        if (this.batchClientId !== message.clientId) {
-            assert(this.batchClientId === undefined,
-                0x2a2 /* "Batch is interrupted by other client op. Should be caught by trackPending()" */);
+        const messageState = messageBatchState(message);
+        switch (this.state) {
+            case "Batch":
+                assert(messageState !== "StartOfBatch", "Batch was interrupted by another batch");
+                // We're already processing a batch, do nothing
+                return;
 
-            // This could be the beginning of a new batch or an individual message.
-            this.emitter.emit("batchBegin", message);
-            this.deltaScheduler.batchBegin(message);
-
-            const batch = (message?.metadata as IRuntimeMessageMetadata)?.batch;
-            if (batch) {
-                this.batchClientId = message.clientId;
-            } else {
-                this.batchClientId = undefined;
+            case "Individual":
+            case "None": {
+                this.emitter.emit("batchBegin", message);
+                this.deltaScheduler.batchBegin(message);
+                this.state = messageState === "Individual" ? "Individual" : "Batch";
+                return;
             }
+
+            case "Error":
+                assert(false, "Should not be processing ops");
+
+            default:
+                unreachableCase(this.state);
         }
     }
 
     public afterOpProcessing(error: any | undefined, message: ISequencedDocumentMessage) {
-        // If this is no longer true, we need to revisit what we do where we set this.hitError.
-        assert(!this.hitError, 0x2a3 /* "container should be closed on any error" */);
-
         if (error) {
             // We assume here that loader will close container and stop processing all future ops.
-            // This is implicit dependency. If this flow changes, this code might no longer be correct.
-            this.hitError = true;
-            this.batchClientId = undefined;
+            // This is an implicit dependency. If this flow changes, this code might no longer be correct.
+            this.state = "Error";
             this.emitter.emit("batchEnd", error, message);
             this.deltaScheduler.batchEnd(message);
             return;
         }
 
-        const batch = (message?.metadata as IRuntimeMessageMetadata)?.batch;
-        // If no batchClientId has been set then we're in an individual batch. Else, if we get
-        // batch end metadata, this is end of the current batch.
-        if (this.batchClientId === undefined || batch === false) {
-            this.batchClientId = undefined;
-            this.emitter.emit("batchEnd", undefined, message);
-            this.deltaScheduler.batchEnd(message);
+        if (this.state === "None") {
+            assert(false, "Calls to afterOpProcessing and beforeOpProcessing out of sync");
+        }
+
+        if (this.state === "Error") {
+            assert(false, "Cannot finish processing a batch after an error");
+        }
+
+        const messageState = messageBatchState(message);
+        if (this.state === "Batch" && messageState !== "EndOfBatch") {
+            // This is a message that is part of the current batch, do nothing
             return;
         }
+
+        assert(messageState === "EndOfBatch" || messageState === "Individual",
+            "Batch was interrupted by another batch");
+
+        // We're at the end of a batch or an individual message
+        this.state = "None";
+        this.emitter.emit("batchEnd", undefined, message);
+        this.deltaScheduler.batchEnd(message);
     }
 }
 
@@ -108,7 +151,7 @@ class ScheduleManagerCore {
             }
 
             // First message will have the batch flag set to true if doing a batched send
-            const firstMessageMetadata = messages[0].metadata as IRuntimeMessageMetadata;
+            const firstMessageMetadata = messageMetadata(messages[0].metadata);
             if (!firstMessageMetadata?.batch) {
                 return;
             }
@@ -230,7 +273,7 @@ class ScheduleManagerCore {
         assert((this.currentBatchClientId === undefined) === (this.pauseSequenceNumber === undefined),
             0x299 /* "non-synchronized state" */);
 
-        const metadata = message.metadata as IRuntimeMessageMetadata;
+        const metadata = messageMetadata(message);
         const batchMetadata = metadata?.batch;
 
         // Protocol messages are never part of a runtime batch of messages

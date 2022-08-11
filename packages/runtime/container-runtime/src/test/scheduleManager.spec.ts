@@ -160,8 +160,8 @@ describe("ScheduleManager", () => {
 
             // We should have only received one "batchBegin" and one "batchEnd" event for the batch.
             assert.strictEqual(deltaManager.inbound.length, 0, "Did not process all ops");
-            assert.strictEqual(1, batchBegin, "Did not receive correct batchBegin event for the batch");
-            assert.strictEqual(1, batchEnd, "Did not receive correct batchEnd event for the batch");
+            assert.strictEqual(batchBegin, 1, "Did not receive correct batchBegin event for the batch");
+            assert.strictEqual(batchEnd, 1, "Did not receive correct batchEnd event for the batch");
         });
 
         it("two batches", async () => {
@@ -204,16 +204,16 @@ describe("ScheduleManager", () => {
 
             assert.strictEqual(deltaManager.inbound.length, 3,
                 "none of the second batch ops are processed yet");
-            assert.strictEqual(1, batchBegin, "Did not receive correct batchBegin event for the batch");
-            assert.strictEqual(1, batchEnd, "Did not receive correct batchEnd event for the batch");
+            assert.strictEqual(batchBegin, 1, "Did not receive correct batchBegin event for the batch");
+            assert.strictEqual(batchEnd, 1, "Did not receive correct batchEnd event for the batch");
 
             // End the batch - all ops should be processed.
             pushOp(batchEndMessage);
             await processOps();
 
             assert.strictEqual(deltaManager.inbound.length, 0, "processed all ops");
-            assert.strictEqual(2, batchBegin, "Did not receive correct batchBegin event for the batch");
-            assert.strictEqual(2, batchEnd, "Did not receive correct batchEnd event for the batch");
+            assert.strictEqual(batchBegin, 2, "Did not receive correct batchBegin event for the batch");
+            assert.strictEqual(batchEnd, 2, "Did not receive correct batchEnd event for the batch");
         });
 
         it("non-batched ops followed by batch", async () => {
@@ -262,8 +262,8 @@ describe("ScheduleManager", () => {
             await processOps();
 
             assert.strictEqual(deltaManager.inbound.length, 0, "processed all ops");
-            assert.strictEqual(3, batchBegin, "Did not receive correct batchBegin event for the batch");
-            assert.strictEqual(3, batchEnd, "Did not receive correct batchEnd event for the batch");
+            assert.strictEqual(batchBegin, 3, "Did not receive correct batchBegin event for the batch");
+            assert.strictEqual(batchEnd, 3, "Did not receive correct batchEnd event for the batch");
         });
 
         function testWrongBatches() {
@@ -332,8 +332,8 @@ describe("ScheduleManager", () => {
                     assert.throws(() => pushOp(messageToFail));
 
                     assert.strictEqual(deltaManager.inbound.length, 4, "Some of batch ops were processed");
-                    assert.strictEqual(0, batchBegin, "Did not receive correct batchBegin event for the batch");
-                    assert.strictEqual(0, batchEnd, "Did not receive correct batchBegin event for the batch");
+                    assert.strictEqual(batchBegin, 0, "Did not receive correct batchBegin event for the batch");
+                    assert.strictEqual(batchEnd, 0, "Did not receive correct batchBegin event for the batch");
                 });
             }
         }
