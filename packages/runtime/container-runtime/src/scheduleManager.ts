@@ -80,10 +80,13 @@ export class ScheduleManager {
                 return;
 
             case "Individual":
+                assert(messageState !== "StartOfBatch", "Batch was interrupted by another batch");
+                this.startBatch(messageState, message);
+                return;
+
             case "None": {
-                this.emitter.emit("batchBegin", message);
-                this.deltaScheduler.batchBegin(message);
-                this.state = messageState === "Individual" ? "Individual" : "Batch";
+                assert(messageState !== "EndOfBatch", "Batch was interrupted by another batch");
+                this.startBatch(messageState, message);
                 return;
             }
 
@@ -99,32 +102,45 @@ export class ScheduleManager {
         if (error) {
             // We assume here that loader will close container and stop processing all future ops.
             // This is an implicit dependency. If this flow changes, this code might no longer be correct.
-            this.state = "Error";
-            this.emitter.emit("batchEnd", error, message);
-            this.deltaScheduler.batchEnd(message);
+            this.endBatch(error, message);
             return;
-        }
-
-        if (this.state === "None") {
-            assert(false, "Calls to afterOpProcessing and beforeOpProcessing out of sync");
-        }
-
-        if (this.state === "Error") {
-            assert(false, "Cannot finish processing a batch after an error");
         }
 
         const messageState = messageBatchState(message);
-        if (this.state === "Batch" && messageState !== "EndOfBatch") {
-            // This is a message that is part of the current batch, do nothing
-            return;
+        switch (this.state) {
+            case "Batch":
+                if (messageState !== "EndOfBatch") {
+                    // This is a message that is part of the current batch, do nothing
+                    return;
+                }
+
+                this.endBatch(error, message);
+                return;
+
+            case "Individual":
+                assert(messageState === "Individual" || messageState === "EndOfBatch",
+                    "Calls to afterOpProcessing and beforeOpProcessing out of sync");
+                this.endBatch(error, message);
+                return;
+
+            case "None":
+                assert(false, "Calls to afterOpProcessing and beforeOpProcessing out of sync");
+            case "Error":
+                assert(false, "Cannot finish processing a batch after an error");
+            default:
+                unreachableCase(this.state);
         }
+    }
 
-        assert(messageState === "EndOfBatch" || messageState === "Individual",
-            "Batch was interrupted by another batch");
+    private startBatch(messageState: MessageBatchState, message: ISequencedDocumentMessage) {
+        this.emitter.emit("batchBegin", message);
+        this.deltaScheduler.batchBegin(message);
+        this.state = messageState === "Individual" ? "Individual" : "Batch";
+    }
 
-        // We're at the end of a batch or an individual message
-        this.state = "None";
-        this.emitter.emit("batchEnd", undefined, message);
+    private endBatch(error: any | undefined, message: ISequencedDocumentMessage) {
+        this.state = error === undefined ? "None" : "Error";
+        this.emitter.emit("batchEnd", error, message);
         this.deltaScheduler.batchEnd(message);
     }
 }
@@ -151,7 +167,7 @@ class ScheduleManagerCore {
             }
 
             // First message will have the batch flag set to true if doing a batched send
-            const firstMessageMetadata = messageMetadata(messages[0].metadata);
+            const firstMessageMetadata = messages[0].metadata as IRuntimeMessageMetadata;
             if (!firstMessageMetadata?.batch) {
                 return;
             }
@@ -273,19 +289,18 @@ class ScheduleManagerCore {
         assert((this.currentBatchClientId === undefined) === (this.pauseSequenceNumber === undefined),
             0x299 /* "non-synchronized state" */);
 
-        const metadata = messageMetadata(message);
-        const batchMetadata = metadata?.batch;
+        const messageState = messageBatchState(message);
 
         // Protocol messages are never part of a runtime batch of messages
         if (!isUnpackedRuntimeMessage(message)) {
             // Protocol messages should never show up in the middle of the batch!
             assert(this.currentBatchClientId === undefined, 0x29a /* "System message in the middle of batch!" */);
-            assert(batchMetadata === undefined, 0x29b /* "system op in a batch?" */);
+            assert(messageState === "Individual", 0x29b /* "system op in a batch?" */);
             assert(!this.localPaused, 0x29c /* "we should be processing ops when there is no active batch" */);
             return;
         }
 
-        if (this.currentBatchClientId === undefined && batchMetadata === undefined) {
+        if (this.currentBatchClientId === undefined && messageState === "Individual") {
             assert(!this.localPaused, 0x29d /* "we should be processing ops when there is no active batch" */);
             return;
         }
@@ -293,45 +308,48 @@ class ScheduleManagerCore {
         // If the client ID changes then we can move the pause point. If it stayed the same then we need to check.
         // If batchMetadata is not undefined then if it's true we've begun a new batch - if false we've ended
         // the previous one
-        if (this.currentBatchClientId !== undefined || batchMetadata === false) {
-            if (this.currentBatchClientId !== message.clientId) {
-                // "Batch not closed, yet message from another client!"
-                throw new DataCorruptionError(
-                    "OpBatchIncomplete",
-                    {
-                        runtimeVersion: pkgVersion,
-                        batchClientId: this.currentBatchClientId,
-                        ...extractSafePropertiesFromMessage(message),
-                    });
-            }
+        if (this.currentBatchClientId !== message.clientId &&
+            (this.currentBatchClientId !== undefined || messageState === "EndOfBatch")) {
+            // "Batch not closed, yet message from another client!"
+            throw new DataCorruptionError(
+                "OpBatchIncomplete",
+                {
+                    runtimeVersion: pkgVersion,
+                    batchClientId: this.currentBatchClientId,
+                    ...extractSafePropertiesFromMessage(message),
+                });
         }
 
         // The queue is
         // 1. paused only when the next message to be processed is the beginning of a batch. Done in two places:
         //    - in afterOpProcessing() - processing ops until reaching start of incomplete batch
         //    - here (batchMetadata == false below), when queue was empty and start of batch showed up.
-        // 2. resumed when batch end comes in (batchMetadata === true case below)
+        // 2. resumed when batch end comes in (EndOfBatch case below)
+        switch (messageState) {
+            case "StartOfBatch":
+                assert(this.currentBatchClientId === undefined, 0x29e /* "there can't be active batch" */);
+                assert(!this.localPaused, 0x29f /* "we should be processing ops when there is no active batch" */);
+                this.pauseSequenceNumber = message.sequenceNumber;
+                this.currentBatchClientId = message.clientId;
+                // Start of the batch
+                // Only pause processing if queue has no other ops!
+                // If there are any other ops in the queue, processing will be stopped when they are processed!
+                if (this.deltaManager.inbound.length === 1) {
+                    this.pauseQueue();
+                }
+                break;
 
-        if (batchMetadata) {
-            assert(this.currentBatchClientId === undefined, 0x29e /* "there can't be active batch" */);
-            assert(!this.localPaused, 0x29f /* "we should be processing ops when there is no active batch" */);
-            this.pauseSequenceNumber = message.sequenceNumber;
-            this.currentBatchClientId = message.clientId;
-            // Start of the batch
-            // Only pause processing if queue has no other ops!
-            // If there are any other ops in the queue, processing will be stopped when they are processed!
-            if (this.deltaManager.inbound.length === 1) {
-                this.pauseQueue();
-            }
-        } else if (batchMetadata === false) {
-            assert(this.pauseSequenceNumber !== undefined, 0x2a0 /* "batch presence was validated above" */);
-            // Batch is complete, we can process it!
-            this.resumeQueue(this.pauseSequenceNumber, message);
-            this.pauseSequenceNumber = undefined;
-            this.currentBatchClientId = undefined;
-        } else {
-            // Continuation of current batch. Do nothing
-            assert(this.currentBatchClientId !== undefined, 0x2a1 /* "logic error" */);
+            case "EndOfBatch":
+                assert(this.pauseSequenceNumber !== undefined, 0x2a0 /* "batch presence was validated above" */);
+                // Batch is complete, we can process it!
+                this.resumeQueue(this.pauseSequenceNumber, message);
+                this.pauseSequenceNumber = undefined;
+                this.currentBatchClientId = undefined;
+                break;
+
+            default:
+                // Continuation of current batch. Do nothing
+                assert(this.currentBatchClientId !== undefined, 0x2a1 /* "logic error" */);
         }
     }
 }
