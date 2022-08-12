@@ -3,10 +3,10 @@
  * Licensed under the MIT License.
  */
 import { EventEmitter } from "events";
-import { IDeltaManager } from "@fluidframework/container-definitions";
+import { IDeltaManager, IErrorBase } from "@fluidframework/container-definitions";
 import { IDocumentMessage, ISequencedDocumentMessage } from "@fluidframework/protocol-definitions";
 import { ITelemetryLogger } from "@fluidframework/common-definitions";
-import { ChildLogger } from "@fluidframework/telemetry-utils";
+import { ChildLogger, IFluidErrorBase, LoggingError } from "@fluidframework/telemetry-utils";
 import { assert, performance, unreachableCase } from "@fluidframework/common-utils";
 import { isUnpackedRuntimeMessage } from "@fluidframework/driver-utils";
 import { DataCorruptionError, DataProcessingError, extractSafePropertiesFromMessage } from "@fluidframework/container-utils";
@@ -298,27 +298,20 @@ class ScheduleManagerCore {
             // Protocol messages should never show up in the middle of the batch!
             if (this.currentBatchClientId !== undefined) {
                 // We've received a system message in the middle of the batch
-                // this.logger.sendErrorEvent
-                const localMessage = message.clientId === this.clientId();
-                const error = DataProcessingError.create(
-                    "Received a system message during batch processing",
-                    "trackPending",
+                this.handleMessageFlowInconsistency(
                     message,
-                    {
-                        runtimeVersion: pkgVersion,
-                        batchClientId: this.currentBatchClientId,
-                        pauseSequenceNumber: this.pauseSequenceNumber,
-                        localBatch: this.currentBatchClientId === this.clientId(),
-                        localMessage: message.clientId === this.clientId(),
-                    });
-
-                if (localMessage) {
-                    // The system message originated from the current client.
-                    // Aborting, so that we limit the spread of this inconsistency
-                    throw error;
-                }
-
-                this.logger.sendErrorEvent({ eventName: "SystemMessageDuringBatch" }, error);
+                    "SystemMessageDuringBatch",
+                    DataProcessingError.create(
+                        "Received a system message during batch processing",
+                        "trackPending",
+                        message,
+                        {
+                            runtimeVersion: pkgVersion,
+                            batchClientId: this.currentBatchClientId,
+                            pauseSequenceNumber: this.pauseSequenceNumber,
+                            localBatch: this.currentBatchClientId === this.clientId(),
+                            localMessage: message.clientId === this.clientId()
+                        }));
             }
 
             assert(messageState === "Individual", 0x29b /* "system op in a batch?" */);
@@ -336,17 +329,20 @@ class ScheduleManagerCore {
         // the previous one
         if (this.currentBatchClientId !== message.clientId &&
             (this.currentBatchClientId !== undefined || messageState === "EndOfBatch")) {
-            // "Batch not closed, yet message from another client!"
-            throw new DataCorruptionError(
+            // Batch not closed, yet message from another client!
+            this.handleMessageFlowInconsistency(
+                message,
                 "OpBatchIncomplete",
-                {
-                    runtimeVersion: pkgVersion,
-                    batchClientId: this.currentBatchClientId,
-                    pauseSequenceNumber: this.pauseSequenceNumber,
-                    localBatch: this.currentBatchClientId === this.clientId(),
-                    localMessage: message.clientId === this.clientId(),
-                    ...extractSafePropertiesFromMessage(message),
-                });
+                new DataCorruptionError(
+                    "OpBatchIncomplete",
+                    {
+                        runtimeVersion: pkgVersion,
+                        batchClientId: this.currentBatchClientId,
+                        pauseSequenceNumber: this.pauseSequenceNumber,
+                        localBatch: this.currentBatchClientId === this.clientId(),
+                        localMessage: message.clientId === this.clientId(),
+                        ...extractSafePropertiesFromMessage(message),
+                    }));
         }
 
         // The queue is
@@ -380,5 +376,20 @@ class ScheduleManagerCore {
                 // Continuation of current batch. Do nothing
                 assert(this.currentBatchClientId !== undefined, 0x2a1 /* "logic error" */);
         }
+    }
+
+    private handleMessageFlowInconsistency(
+        message: ISequencedDocumentMessage,
+        eventName: string,
+        error: IFluidErrorBase,
+    ) {
+        const localMessage = message.clientId === this.clientId();
+        if (localMessage) {
+            // The system message originated from the current client.
+            // Aborting, so that we limit the spread of this inconsistency
+            throw error;
+        }
+
+        this.logger.sendErrorEvent({ eventName }, error);
     }
 }
