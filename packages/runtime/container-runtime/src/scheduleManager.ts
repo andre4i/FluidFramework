@@ -9,7 +9,7 @@ import { ITelemetryLogger } from "@fluidframework/common-definitions";
 import { ChildLogger } from "@fluidframework/telemetry-utils";
 import { assert, performance, unreachableCase } from "@fluidframework/common-utils";
 import { isUnpackedRuntimeMessage } from "@fluidframework/driver-utils";
-import { DataCorruptionError, extractSafePropertiesFromMessage } from "@fluidframework/container-utils";
+import { DataCorruptionError, DataProcessingError, extractSafePropertiesFromMessage } from "@fluidframework/container-utils";
 import { DeltaScheduler } from "./deltaScheduler";
 import { pkgVersion } from "./packageVersion";
 import { latencyThreshold } from "./connectionTelemetry";
@@ -26,7 +26,7 @@ type IRuntimeMessageMetadata = undefined | {
  * Error - encountered an error between processing ops
  * None - In between batches or individual messages
  */
-type ScheduleState = "Individual" | "Batch" | "Error" | "None";
+type BatchProcessingState = "Individual" | "Batch" | "Error" | "None";
 
 /**
  * Relative to a batch, a message can be:
@@ -57,18 +57,19 @@ const messageBatchState = (message: ISequencedDocumentMessage): MessageBatchStat
  */
 export class ScheduleManager {
     private readonly deltaScheduler: DeltaScheduler;
-    private state: ScheduleState = "None";
+    private state: BatchProcessingState = "None";
 
     constructor(
         private readonly deltaManager: IDeltaManager<ISequencedDocumentMessage, IDocumentMessage>,
         private readonly emitter: EventEmitter,
+        readonly clientId: () => string | undefined,
         private readonly logger: ITelemetryLogger,
     ) {
         this.deltaScheduler = new DeltaScheduler(
             this.deltaManager,
             ChildLogger.create(this.logger, "DeltaScheduler"),
         );
-        void new ScheduleManagerCore(deltaManager, logger);
+        void new ScheduleManagerCore(deltaManager, clientId, logger);
     }
 
     public beforeOpProcessing(message: ISequencedDocumentMessage) {
@@ -158,6 +159,7 @@ class ScheduleManagerCore {
 
     constructor(
         private readonly deltaManager: IDeltaManager<ISequencedDocumentMessage, IDocumentMessage>,
+        private readonly clientId: () => string | undefined,
         private readonly logger: ITelemetryLogger,
     ) {
         // Listen for delta manager sends and add batch metadata to messages
@@ -294,7 +296,31 @@ class ScheduleManagerCore {
         // Protocol messages are never part of a runtime batch of messages
         if (!isUnpackedRuntimeMessage(message)) {
             // Protocol messages should never show up in the middle of the batch!
-            assert(this.currentBatchClientId === undefined, 0x29a /* "System message in the middle of batch!" */);
+            if (this.currentBatchClientId !== undefined) {
+                // We've received a system message in the middle of the batch
+                // this.logger.sendErrorEvent
+                const localMessage = message.clientId === this.clientId();
+                const error = DataProcessingError.create(
+                    "Received a system message during batch processing",
+                    "trackPending",
+                    message,
+                    {
+                        runtimeVersion: pkgVersion,
+                        batchClientId: this.currentBatchClientId,
+                        pauseSequenceNumber: this.pauseSequenceNumber,
+                        localBatch: this.currentBatchClientId === this.clientId(),
+                        localMessage: message.clientId === this.clientId(),
+                    });
+
+                if (localMessage) {
+                    // The system message originated from the current client.
+                    // Aborting, so that we limit the spread of this inconsistency
+                    throw error;
+                }
+
+                this.logger.sendErrorEvent({ eventName: "SystemMessageDuringBatch" }, error);
+            }
+
             assert(messageState === "Individual", 0x29b /* "system op in a batch?" */);
             assert(!this.localPaused, 0x29c /* "we should be processing ops when there is no active batch" */);
             return;
@@ -316,6 +342,9 @@ class ScheduleManagerCore {
                 {
                     runtimeVersion: pkgVersion,
                     batchClientId: this.currentBatchClientId,
+                    pauseSequenceNumber: this.pauseSequenceNumber,
+                    localBatch: this.currentBatchClientId === this.clientId(),
+                    localMessage: message.clientId === this.clientId(),
                     ...extractSafePropertiesFromMessage(message),
                 });
         }
