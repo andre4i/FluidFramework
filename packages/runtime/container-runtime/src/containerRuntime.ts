@@ -160,6 +160,7 @@ import {
 import { BindBatchTracker } from "./batchTracker";
 import { ISerializedBaseSnapshotBlobs, SerializedSnapshotStorage } from "./serializedSnapshotStorage";
 import { ScheduleManager } from "./scheduleManager";
+import { ChunkedMessageProcessor } from "./chunkedMessageProcessor";
 
 export enum ContainerMessageType {
     // An op to be delivered to store
@@ -179,16 +180,6 @@ export enum ContainerMessageType {
 
     // Sets the alias of a root data store
     Alias = "alias",
-}
-
-export interface IChunkedOp {
-    chunkId: number;
-
-    totalChunks: number;
-
-    contents: string;
-
-    originalType: MessageType | ContainerMessageType;
 }
 
 export interface ContainerRuntimeMessage {
@@ -838,11 +829,8 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
     private readonly blobManager: BlobManager;
     private readonly pendingStateManager: PendingStateManager;
     private readonly garbageCollector: IGarbageCollector;
-
-    // Local copy of incomplete received chunks.
-    private readonly chunkMap: Map<string, string[]>;
-
     private readonly dataStores: DataStores;
+    private readonly chunkedMessageProcessor: ChunkedMessageProcessor;
 
     /**
      * True if generating summaries with isolated channels is
@@ -957,7 +945,7 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
         this.disableIsolatedChannels = this.runtimeOptions.summaryOptions.disableIsolatedChannels ?? false;
 
         this._connected = this.context.connected;
-        this.chunkMap = new Map<string, string[]>(chunks);
+        this.chunkedMessageProcessor = new ChunkedMessageProcessor(chunks);
 
         this.handleContext = new ContainerFluidHandleContext("", this);
 
@@ -1089,7 +1077,7 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
             pendingRuntimeState?.pending);
 
         this.context.quorum.on("removeMember", (clientId: string) => {
-            this.clearPartialChunks(clientId);
+            this.chunkedMessageProcessor.clearPartialChunks(clientId);
         });
 
         this.summaryCollection = new SummaryCollection(this.deltaManager, this.logger);
@@ -1411,8 +1399,8 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
     ) {
         this.addMetadataToSummary(summaryTree);
 
-        if (this.chunkMap.size > 0) {
-            const content = JSON.stringify([...this.chunkMap]);
+        if (this.chunkedMessageProcessor.hasChunks()) {
+            const content = JSON.stringify([...this.chunkedMessageProcessor.chunks()]);
             addBlobToSummary(summaryTree, chunksBlobName, content);
         }
 
@@ -1629,7 +1617,7 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
 
             // Chunk processing must come first given that we will transform the message to the unchunked version
             // once all pieces are available
-            message = this.processRemoteChunkedMessage(message);
+            message = this.chunkedMessageProcessor.processRemoteMessage(message);
 
             let localOpMetadata: unknown;
             if (local) {
@@ -2462,43 +2450,6 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
         }
     }
 
-    private processRemoteChunkedMessage(message: ISequencedDocumentMessage) {
-        if (message.type !== ContainerMessageType.ChunkedOp) {
-            return message;
-        }
-
-        const clientId = message.clientId;
-        const chunkedContent = message.contents as IChunkedOp;
-        this.addChunk(clientId, chunkedContent);
-        if (chunkedContent.chunkId === chunkedContent.totalChunks) {
-            const newMessage = { ...message };
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            const serializedContent = this.chunkMap.get(clientId)!.join("");
-            newMessage.contents = JSON.parse(serializedContent);
-            newMessage.type = chunkedContent.originalType;
-            this.clearPartialChunks(clientId);
-            return newMessage;
-        }
-        return message;
-    }
-
-    private addChunk(clientId: string, chunkedContent: IChunkedOp) {
-        let map = this.chunkMap.get(clientId);
-        if (map === undefined) {
-            map = [];
-            this.chunkMap.set(clientId, map);
-        }
-        assert(chunkedContent.chunkId === map.length + 1,
-            0x131 /* "Mismatch between new chunkId and expected chunkMap" */); // 1-based indexing
-        map.push(chunkedContent.contents);
-    }
-
-    private clearPartialChunks(clientId: string) {
-        if (this.chunkMap.has(clientId)) {
-            this.chunkMap.delete(clientId);
-        }
-    }
-
     private updateDocumentDirtyState(dirty: boolean) {
         if (this.dirtyContainer === dirty) {
             return;
@@ -2552,7 +2503,6 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
 
         if (this.canSendOps()) {
             const serializedContent = JSON.stringify(content);
-            const maxOpSize = this.context.deltaManager.maxMessageSize;
 
             // If in TurnBased flush mode we will trigger a flush at the next turn break
             if (this.flushMode === FlushMode.TurnBased && !this.needsFlush) {
@@ -2572,11 +2522,22 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
                 }
             }
 
-            clientSequenceNumber = this.submitMaybeChunkedMessages(
+            if (this._maxOpSizeInBytes >= 0
+                && serializedContent
+                && serializedContent.length > this._maxOpSizeInBytes) {
+                this.closeFn(new GenericError(
+                    "OpTooLarge",
+                        /* error */ undefined,
+                    {
+                        length: serializedContent.length,
+                        limit: this._maxOpSizeInBytes,
+                    }));
+                return;
+            }
+
+            clientSequenceNumber = this.submitRuntimeMessage(
                 type,
                 content,
-                serializedContent,
-                maxOpSize,
                 this._flushMode === FlushMode.TurnBased,
                 opMetadataInternal);
         }
@@ -2593,63 +2554,6 @@ export class ContainerRuntime extends TypedEventEmitter<IContainerRuntimeEvents>
         if (this.isContainerMessageDirtyable(type, content)) {
             this.updateDocumentDirtyState(true);
         }
-    }
-
-    private submitMaybeChunkedMessages(
-        type: ContainerMessageType,
-        content: any,
-        serializedContent: string,
-        serverMaxOpSize: number,
-        batch: boolean,
-        opMetadataInternal: unknown = undefined,
-    ): number {
-        if (this._maxOpSizeInBytes >= 0) {
-            // Chunking disabled
-            if (!serializedContent || serializedContent.length <= this._maxOpSizeInBytes) {
-                return this.submitRuntimeMessage(type, content, batch, opMetadataInternal);
-            }
-
-            // When chunking is disabled, we ignore the server max message size
-            // and if the content length is larger than the client configured message size
-            // instead of splitting the content, we will fail by explicitly close the container
-            this.closeFn(new GenericError(
-                "OpTooLarge",
-                /* error */ undefined,
-                {
-                    length: serializedContent.length,
-                    limit: this._maxOpSizeInBytes,
-                }));
-            return -1;
-        }
-
-        // Chunking enabled, fallback on the server's max message size
-        // and split the content accordingly
-        if (!serializedContent || serializedContent.length <= serverMaxOpSize) {
-            return this.submitRuntimeMessage(type, content, batch, opMetadataInternal);
-        }
-
-        return this.submitChunkedMessage(type, serializedContent, serverMaxOpSize);
-    }
-
-    private submitChunkedMessage(type: ContainerMessageType, content: string, maxOpSize: number): number {
-        const contentLength = content.length;
-        const chunkN = Math.floor((contentLength - 1) / maxOpSize) + 1;
-        let offset = 0;
-        let clientSequenceNumber: number = 0;
-        for (let i = 1; i <= chunkN; i = i + 1) {
-            const chunkedOp: IChunkedOp = {
-                chunkId: i,
-                contents: content.substr(offset, maxOpSize),
-                originalType: type,
-                totalChunks: chunkN,
-            };
-            offset += maxOpSize;
-            clientSequenceNumber = this.submitRuntimeMessage(
-                ContainerMessageType.ChunkedOp,
-                chunkedOp,
-                false);
-        }
-        return clientSequenceNumber;
     }
 
     private submitSystemMessage(
