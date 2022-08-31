@@ -5,7 +5,7 @@
 
 import { EventEmitter } from "events";
 import { IAudienceOwner } from "@fluidframework/container-definitions";
-import { IProtocolHandler, ProtocolHandlerBuilder } from "@fluidframework/container-loader";
+import { ConnectionState, IProtocolHandler, ProtocolHandlerBuilder } from "@fluidframework/container-loader";
 import { IQuorumSnapshot, IScribeProtocolState } from "@fluidframework/protocol-base";
 import {
     IQuorum,
@@ -144,17 +144,23 @@ class EmptyProtocolHandler implements IProtocolHandler {
         };
     }
 
-    setConnectionState(connected: boolean, clientId: string | undefined) {
+    setConnectedState(state: ConnectionState, clientId: string | undefined) {
         if (clientId === undefined) {
             return;
         }
 
-        if (connected) {
-            this.quorum.connectLocalClient(clientId, this.attributes.sequenceNumber);
-        } else {
-            this.quorum.disconnectLocalClient(clientId);
+        switch (state) {
+            case ConnectionState.CatchingUp:
+            case ConnectionState.Connected:
+            case ConnectionState.EstablishingConnection:
+                this.quorum.connectLocalClient(clientId, this.attributes.sequenceNumber);
+                break;
+            default:
+                this.quorum.disconnectLocalClient(clientId);
         }
     }
+
+    setConnectionState(connected: boolean, clientId: string | undefined) { }
 
     close(): void { }
     processSignal(_message: ISignalMessage) { }

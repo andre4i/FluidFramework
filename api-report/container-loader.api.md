@@ -206,6 +206,8 @@ export interface IProtocolHandler extends IProtocolHandler_2 {
     readonly audience: IAudienceOwner;
     // (undocumented)
     processSignal(message: ISignalMessage): any;
+    // (undocumented)
+    setConnectedState(state: ConnectionState, clientId: string | undefined): any;
 }
 
 // @public

@@ -18,6 +18,7 @@ import {
     ISignalMessage,
     MessageType,
 } from "@fluidframework/protocol-definitions";
+import { ConnectionState } from "./connectionState";
 
 /**
  * Function to be used for creating a protocol handler.
@@ -32,6 +33,7 @@ export type ProtocolHandlerBuilder = (
 export interface IProtocolHandler extends IBaseProtocolHandler {
     readonly audience: IAudienceOwner;
     processSignal(message: ISignalMessage);
+    setConnectedState(state: ConnectionState, clientId: string | undefined);
 }
 
 export class ProtocolHandler extends ProtocolOpHandler implements IProtocolHandler {
@@ -55,6 +57,10 @@ export class ProtocolHandler extends ProtocolOpHandler implements IProtocolHandl
         for (const initialClient of initialClients) {
             this.audience.addMember(initialClient.clientId, initialClient.client);
         }
+    }
+
+    public setConnectedState(state: ConnectionState, clientId: string | undefined) {
+        this.setConnectionState(state === ConnectionState.Connected, clientId);
     }
 
     public processMessage(message: ISequencedDocumentMessage, local: boolean): IProcessMessageResult {

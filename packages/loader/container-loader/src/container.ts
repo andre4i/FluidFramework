@@ -1451,6 +1451,7 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
                 }
             });
 
+        protocol.setConnectedState(this.connectionState, this.clientId);
         return protocol;
     }
 
@@ -1676,15 +1677,16 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
             this.messageCountAfterDisconnection = 0;
         }
 
-        const state = this.connectionState === ConnectionState.Connected;
+        const isConnected = this.connectionState === ConnectionState.Connected;
 
         // Both protocol and context should not be undefined if we got so far.
 
         if (this._context?.disposed === false) {
-            this.context.setConnectionState(state, this.clientId);
+            this.context.setConnectionState(isConnected, this.clientId);
         }
-        this.protocolHandler.setConnectionState(state, this.clientId);
-        raiseConnectedEvent(this.mc.logger, this, state, this.clientId);
+
+        this.protocolHandler.setConnectedState(this.connectionState, this.clientId);
+        raiseConnectedEvent(this.mc.logger, this, isConnected, this.clientId);
 
         if (logOpsOnReconnect) {
             this.mc.logger.sendTelemetryEvent(
