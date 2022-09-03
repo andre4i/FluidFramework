@@ -152,7 +152,6 @@ class EmptyProtocolHandler implements IProtocolHandler {
         switch (state) {
             case ConnectionState.CatchingUp:
             case ConnectionState.Connected:
-            case ConnectionState.EstablishingConnection:
                 this.quorum.connectLocalClient(clientId, this.attributes.sequenceNumber);
                 break;
             default:

@@ -1453,7 +1453,6 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
                 }
             });
 
-        protocol.setConnectedState(this.connectionState, this.clientId);
         return protocol;
     }
 
@@ -1556,6 +1555,8 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
                 for (const priorClient of details.initialClients ?? []) {
                     this._protocolHandler.audience.addMember(priorClient.clientId, priorClient.client);
                 }
+
+                this._protocolHandler.setConnectedState(ConnectionState.CatchingUp, details.clientId);
             }
 
             const deltaManagerForCatchingUp =
@@ -1687,7 +1688,7 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
             this.context.setConnectionState(isConnected, this.clientId);
         }
 
-        this.protocolHandler.setConnectedState(this.connectionState, this.clientId);
+        this.protocolHandler.setConnectedState(this.connectionState, this.connectionStateHandler.pendingClientId);
         raiseConnectedEvent(this.mc.logger, this, isConnected, this.clientId);
 
         if (logOpsOnReconnect) {
