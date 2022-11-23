@@ -3,6 +3,8 @@
  * Licensed under the MIT License.
  */
 
+// eslint-disable-next-line import/no-nodejs-modules
+import * as crypto from "crypto";
 import { strict as assert } from "assert";
 import { SharedMap } from "@fluidframework/map";
 import { requestFluidObject } from "@fluidframework/runtime-utils";
@@ -68,6 +70,8 @@ describeNoCompat("Message size", (getTestObjectProvider) => {
         await provider.ensureSynchronized();
     };
 
+    const generateRandomStringOfSize = (sizeInBytes: number): string =>
+        crypto.randomBytes(sizeInBytes / 2).toString("hex");
     const generateStringOfSize = (sizeInBytes: number): string => new Array(sizeInBytes + 1).join("0");
     const setMapKeys = (map: SharedMap, count: number, item: string): void => {
         for (let i = 0; i < count; i++) {
@@ -119,6 +123,9 @@ describeNoCompat("Message size", (getTestObjectProvider) => {
         await provider.ensureSynchronized();
 
         assertMapValues(dataObject2map, messageCount, largeString);
+        await provider.ensureSynchronized();
+
+        assertMapValues(dataObject2map, messageCount, largeString);
     });
 
     it("Single large op passes when smaller than the max op size", async () => {
@@ -158,6 +165,9 @@ describeNoCompat("Message size", (getTestObjectProvider) => {
         const largeString = generateStringOfSize(maxMessageSizeInBytes + 1);
         const messageCount = 1;
         setMapKeys(dataObject1map, messageCount, largeString);
+        await provider.ensureSynchronized();
+
+        assertMapValues(dataObject2map, messageCount, largeString);
     });
 
     it("Batched small ops pass when compression enabled and batch is larger than max op size", async function() {
@@ -174,4 +184,25 @@ describeNoCompat("Message size", (getTestObjectProvider) => {
 
         assertMapValues(dataObject2map, messageCount, largeString);
     });
+
+    itExpects.only(
+        "Single large op passes when compression enabled, compressed content is over max op size",
+        [
+            { eventName: "fluid:telemetry:OpPerf:OpRoundtripTime" },
+        ], async function() {
+            const maxMessageSizeInBytes = 15 * 1024 * 1024; // 15MB
+            await setupContainers({
+                ...testContainerConfig,
+                runtimeOptions: {
+                    compressionOptions: { minimumBatchSizeInBytes: 1, compressionAlgorithm: CompressionAlgorithms.lz4 },
+                },
+            }, {});
+
+            const largeString = generateRandomStringOfSize(maxMessageSizeInBytes);
+            const messageCount = 3;
+            setMapKeys(dataObject1map, messageCount, largeString);
+            await provider.ensureSynchronized();
+
+            assertMapValues(dataObject2map, messageCount, largeString);
+        }).timeout(500000);
 });

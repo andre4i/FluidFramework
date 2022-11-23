@@ -4,9 +4,11 @@
  */
 
 import { assert } from "@fluidframework/common-utils";
+import { IBatchMessage } from "@fluidframework/container-definitions";
 import { ISequencedDocumentMessage, MessageType } from "@fluidframework/protocol-definitions";
 import { ContainerMessageType } from "../containerRuntime";
 import { IProcessingResult, IRemoteMessageProcessor } from "./inbox";
+import { IBatchProcessor } from "./outbox";
 
 export interface IChunkedOp {
     chunkId: number;
@@ -15,15 +17,25 @@ export interface IChunkedOp {
     originalType: MessageType | ContainerMessageType;
 }
 
+const DefaultChunkSize = 700 * 1024; // 700kb
+
 /**
  * Responsible for keeping track of remote chunked messages.
  */
-export class OpSplitter implements IRemoteMessageProcessor {
+export class OpSplitter implements IRemoteMessageProcessor, IBatchProcessor {
     // Local copy of incomplete received chunks.
     private readonly chunkMap: Map<string, string[]>;
 
-    constructor(chunks: [string, string[]][]) {
+    constructor(
+        chunks: [string, string[]][],
+        private readonly submitBatchFn: (batch: IBatchMessage[]) => number,
+        public readonly chunkSizeInBytes: number = DefaultChunkSize,
+    ) {
         this.chunkMap = new Map<string, string[]>(chunks);
+    }
+
+    public processOutgoing(batch: IBatch) {
+        throw new Error("Method not implemented.");
     }
 
     public get hasChunks(): boolean {
