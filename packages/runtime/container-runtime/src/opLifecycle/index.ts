@@ -15,3 +15,7 @@ export {
 export {
     OpUnpacker,
 } from "./opUnpacker";
+export {
+    IBatchProcessor,
+    Outbox,
+} from "./outbox";
