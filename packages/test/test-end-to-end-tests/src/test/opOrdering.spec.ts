@@ -108,7 +108,7 @@ describeInstallVersions(
             it(`Ops are processed in order, version: ${version}`, async () => {
                 await setupContainers(version);
                 map.set("key", "oldest");
-                detachedContainer.once("readonly", () => {
+                detachedContainer.once("connected", () => {
                     map.set("key", "latest");
                 });
                 await detachedContainer.attach(provider.driver.createCreateNewRequest(provider.documentId));
