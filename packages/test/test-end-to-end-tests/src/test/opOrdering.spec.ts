@@ -14,10 +14,12 @@ import {
     DataObjectFactoryType,
     TestFluidObjectFactory,
 } from "@fluidframework/test-utils";
-import { describeInstallVersions, getContainerRuntimeApi } from "@fluidframework/test-version-utils";
+import { describeInstallVersions, getContainerRuntimeApi, getVersionedTestObjectProvider } from "@fluidframework/test-version-utils";
 import { IContainer } from "@fluidframework/container-definitions";
 import { IContainerRuntimeBase } from "@fluidframework/runtime-definitions";
 import { IRequest } from "@fluidframework/core-interfaces";
+// eslint-disable-next-line import/no-internal-modules
+import { driver, r11sEndpointName, tenantIndex } from "@fluidframework/test-version-utils/dist/compatOptions";
 
 const versions = [
     "2.0.0-internal.2.2.0",
@@ -30,16 +32,29 @@ describeInstallVersions(
     {
         requestAbsoluteVersions: versions,
     },
-    /* timeoutMs */ 100000,
+    /* timeoutMs */ 1000000,
 )(
     "OP Ordering",
-    (getTestObjectProvider) => {
+    () => {
         describe("OP processing", () => versions.forEach((version) => {
             let provider: ITestObjectProvider;
             let map: SharedMap;
             let detachedContainer: IContainer;
-            beforeEach(() => {
-                provider = getTestObjectProvider();
+            beforeEach(async () => {
+                provider = await getVersionedTestObjectProvider(
+                    version, // baseVersion
+                    version, // loaderVersion
+                    {
+                        type: driver,
+                        version,
+                        config: {
+                            r11s: { r11sEndpointName },
+                            odsp: { tenantIndex },
+                        },
+                    }, // driverConfig
+                    version, // runtimeVersion
+                    version, // dataRuntimeVersion
+                );
             });
             afterEach(async () => provider.reset());
 
@@ -58,9 +73,9 @@ describeInstallVersions(
                 registry,
             };
 
-            const createOldDetachedContainer = async (version): Promise<IContainer> => {
+            const createOldDetachedContainer = async (ver): Promise<IContainer> => {
                 const oldContainerRuntimeFactoryWithDefaultDataStore =
-                    getContainerRuntimeApi(version).ContainerRuntimeFactoryWithDefaultDataStore;
+                    getContainerRuntimeApi(ver).ContainerRuntimeFactoryWithDefaultDataStore;
                 const oldRuntimeFactory =
                     new oldContainerRuntimeFactoryWithDefaultDataStore(
                         factory,
@@ -80,12 +95,12 @@ describeInstallVersions(
                 return loader.createDetachedContainer(provider.defaultCodeDetails);
             };
 
-            const setupContainers = async (version: string) => {
+            const setupContainers = async (ver: string) => {
                 const startup = await provider.makeTestContainer(testContainerConfig);
                 const startupDO = await requestFluidObject<ITestFluidObject>(startup, "default");
                 await startupDO.getSharedObject<SharedMap>(mapId);
 
-                detachedContainer = await createOldDetachedContainer(version);
+                detachedContainer = await createOldDetachedContainer(ver);
                 const oldDataObject = await requestFluidObject<ITestFluidObject>(detachedContainer, "default");
                 map = await oldDataObject.getSharedObject<SharedMap>(mapId);
             };
@@ -93,7 +108,7 @@ describeInstallVersions(
             it(`Ops are processed in order, version: ${version}`, async () => {
                 await setupContainers(version);
                 map.set("key", "oldest");
-                detachedContainer.once("connected", () => {
+                detachedContainer.once("readonly", () => {
                     map.set("key", "latest");
                 });
                 await detachedContainer.attach(provider.driver.createCreateNewRequest(provider.documentId));
