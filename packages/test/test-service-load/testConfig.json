@@ -40,8 +40,8 @@
 			"content": {
 				"useRandomContent": true,
 				"opSizeinBytes": 214800,
-				"largeOpRate": 2000,
-				"numClients": 12
+				"largeOpRate": 120,
+				"numClients": 120
 			}
 		},
 		"ci_frs": {
