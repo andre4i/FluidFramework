@@ -21,6 +21,7 @@ It's important to communicate breaking changes to our stakeholders. To write a g
 
 -   [garbage-collector and related items deprecated](#garbage-collector-and-related-items-deprecated)
 -   [GC interfaces removed from runtime-definitions](#gc-interfaces-removed-from-runtime-definitions)
+-   [Node 16 is required for consuming Fluid Framework packages]()
 
 ### garbage-collector and related items deprecated
 
@@ -47,6 +48,10 @@ The following interfaces available in `@fluidframework/runtime-definitions` are 
 -   `IGarbageCollectionState`
 -   `IGarbageCollectionSnapshotData`
 -   `IGarbageCollectionSummaryDetailsLegacy`
+
+### Node 16 is required for consuming Fluid Framework packages
+
+On 30 April 2023, extended support for Node 14 LTS will end. Consuming Fluid Framework packages will require an upgrade to Node 16.
 
 # 2.0.0-internal.4.0.0
 
