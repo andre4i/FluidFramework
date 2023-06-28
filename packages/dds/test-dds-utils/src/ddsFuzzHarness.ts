@@ -27,18 +27,28 @@ import {
 	MockStorage,
 	MockContainerRuntimeFactoryForReconnection,
 	MockContainerRuntimeForReconnection,
+	MockContainerRuntime,
+	MockContainerRuntimeFactory,
+	MockContainerRuntimeFactoryForRebasing,
+	MockContainerRuntimeForRebasing,
 } from "@fluidframework/test-runtime-utils";
 import { IChannelFactory, IChannelServices } from "@fluidframework/datastore-definitions";
 import { TypedEventEmitter, unreachableCase } from "@fluidframework/common-utils";
 
-export interface Client<TChannelFactory extends IChannelFactory> {
+export interface Client<
+	TChannelFactory extends IChannelFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+> {
 	channel: ReturnType<TChannelFactory["create"]>;
-	containerRuntime: MockContainerRuntimeForReconnection;
+	containerRuntime: TMockContainerRuntime;
 }
 
-export interface DDSFuzzTestState<TChannelFactory extends IChannelFactory>
-	extends BaseFuzzTestState {
-	containerRuntimeFactory: MockContainerRuntimeFactoryForReconnection;
+export interface DDSFuzzTestState<
+	TChannelFactory extends IChannelFactory,
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+> extends BaseFuzzTestState {
+	containerRuntimeFactory: TMockContainerRuntimeFactory;
 
 	/**
 	 * Client which is responsible for summarizing. This client remains connected and read-only
@@ -47,10 +57,10 @@ export interface DDSFuzzTestState<TChannelFactory extends IChannelFactory>
 	 * This client is also used for consistency validation, as eventual consistency bugs are
 	 * typically easier to reason about when one client was readonly.
 	 */
-	summarizerClient: Client<TChannelFactory>;
-	clients: Client<TChannelFactory>[];
+	summarizerClient: Client<TChannelFactory, TMockContainerRuntime>;
+	clients: Client<TChannelFactory, TMockContainerRuntime>[];
 	// Client which was selected to perform an operation on
-	client: Client<TChannelFactory>;
+	client: Client<TChannelFactory, TMockContainerRuntime>;
 	// dds which was selected to perform an operation on. will be the same as client.channel
 	channel: ReturnType<TChannelFactory["create"]>;
 }
@@ -68,6 +78,10 @@ export interface ChangeConnectionState {
 	connected: boolean;
 }
 
+export interface TriggerRebase {
+	type: "rebase";
+}
+
 export interface AddClient {
 	type: "addClient";
 	addedClientId: string;
@@ -81,9 +95,12 @@ interface HasWorkloadName {
 	workloadName: string;
 }
 
-function getSaveDirectory(
+function getSaveDirectory<
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+>(
 	model: HasWorkloadName,
-	options: DDSFuzzSuiteOptions,
+	options: DDSFuzzSuiteOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>,
 ): string | undefined {
 	if (!options.saveFailures) {
 		return undefined;
@@ -92,9 +109,12 @@ function getSaveDirectory(
 	return path.join(options.saveFailures.directory, workloadFriendly);
 }
 
-function getSaveInfo(
+function getSaveInfo<
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+>(
 	model: HasWorkloadName,
-	options: DDSFuzzSuiteOptions,
+	options: DDSFuzzSuiteOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>,
 	seed: number,
 ): SaveInfo | undefined {
 	const directory = getSaveDirectory(model, options);
@@ -142,7 +162,13 @@ function getSaveInfo(
 export interface DDSFuzzModel<
 	TChannelFactory extends IChannelFactory,
 	TOperation extends BaseOperation,
-	TState extends DDSFuzzTestState<TChannelFactory> = DDSFuzzTestState<TChannelFactory>,
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+	TState extends DDSFuzzTestState<
+		TChannelFactory,
+		TMockContainerRuntimeFactory,
+		TMockContainerRuntime
+	> = DDSFuzzTestState<TChannelFactory, TMockContainerRuntimeFactory, TMockContainerRuntime>,
 > {
 	/**
 	 * Name for this model. This is used for test case naming, and should generally reflect properties
@@ -183,24 +209,51 @@ export interface DDSFuzzModel<
 	) => void;
 }
 
-export interface DDSFuzzHarnessEvents {
+export interface DDSFuzzHarnessEvents<
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+> {
 	/**
 	 * Raised for each non-summarizer client created during fuzz test execution.
 	 */
-	(event: "clientCreate", listener: (client: Client<IChannelFactory>) => void);
+	(
+		event: "clientCreate",
+		listener: (client: Client<IChannelFactory, TMockContainerRuntime>) => void,
+	);
 
 	/**
 	 * Raised after creating the initialState but prior to performing the fuzzActions..
 	 */
-	(event: "testStart", listener: (initialState: DDSFuzzTestState<IChannelFactory>) => void);
+	(
+		event: "testStart",
+		listener: (
+			initialState: DDSFuzzTestState<
+				IChannelFactory,
+				TMockContainerRuntimeFactory,
+				TMockContainerRuntime
+			>,
+		) => void,
+	);
 
 	/**
 	 * Raised after all fuzzActions have been completed.
 	 */
-	(event: "testEnd", listener: (finalState: DDSFuzzTestState<IChannelFactory>) => void);
+	(
+		event: "testEnd",
+		listener: (
+			finalState: DDSFuzzTestState<
+				IChannelFactory,
+				TMockContainerRuntimeFactory,
+				TMockContainerRuntime
+			>,
+		) => void,
+	);
 }
 
-export interface DDSFuzzSuiteOptions {
+export interface DDSFuzzSuiteOptions<
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+> {
 	/**
 	 * Number of tests to generate for correctness modes (which are run in the PR gate).
 	 */
@@ -260,7 +313,9 @@ export interface DDSFuzzSuiteOptions {
 	 * createDDSFuzzSuite(model, options);
 	 * ```
 	 */
-	emitter: TypedEventEmitter<DDSFuzzHarnessEvents>;
+	emitter: TypedEventEmitter<
+		DDSFuzzHarnessEvents<TMockContainerRuntimeFactory, TMockContainerRuntime>
+	>;
 
 	/**
 	 * Strategy for validating eventual consistency of DDSes.
@@ -281,6 +336,11 @@ export interface DDSFuzzSuiteOptions {
 	 * TODO: Expose options for how to inject reconnection in a more flexible way.
 	 */
 	reconnectProbability: number;
+
+	/**
+	 * Each non-synchronization option has this probability of rebasing the current batch before sending
+	 */
+	rebaseProbability: number;
 
 	/**
 	 * Seed which should be replayed from disk.
@@ -314,13 +374,17 @@ export interface DDSFuzzSuiteOptions {
 	saveFailures: false | { directory: string };
 }
 
-export const defaultDDSFuzzSuiteOptions: DDSFuzzSuiteOptions = {
+export const defaultDDSFuzzSuiteOptions: DDSFuzzSuiteOptions<
+	MockContainerRuntimeFactoryForReconnection,
+	MockContainerRuntimeForReconnection
+> = {
 	defaultTestCount: defaultOptions.defaultTestCount,
 	emitter: new TypedEventEmitter(),
 	numberOfClients: 3,
 	only: [],
 	parseOperations: (serialized: string) => JSON.parse(serialized) as BaseOperation[],
 	reconnectProbability: 0,
+	rebaseProbability: 0,
 	saveFailures: false,
 	validationStrategy: { type: "random", probability: 0.05 },
 };
@@ -333,11 +397,30 @@ export const defaultDDSFuzzSuiteOptions: DDSFuzzSuiteOptions = {
 export function mixinNewClient<
 	TChannelFactory extends IChannelFactory,
 	TOperation extends BaseOperation,
-	TState extends DDSFuzzTestState<TChannelFactory>,
+	TState extends DDSFuzzTestState<
+		TChannelFactory,
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection
+	>,
 >(
-	model: DDSFuzzModel<TChannelFactory, TOperation, TState>,
-	options: DDSFuzzSuiteOptions,
-): DDSFuzzModel<TChannelFactory, TOperation | AddClient, TState> {
+	model: DDSFuzzModel<
+		TChannelFactory,
+		TOperation,
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection,
+		TState
+	>,
+	options: DDSFuzzSuiteOptions<
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection
+	>,
+): DDSFuzzModel<
+	TChannelFactory,
+	TOperation | AddClient,
+	MockContainerRuntimeFactoryForReconnection,
+	MockContainerRuntimeForReconnection,
+	TState
+> {
 	const isClientAddOp = (op: TOperation | AddClient): op is AddClient => op.type === "addClient";
 
 	const generatorFactory: () => Generator<TOperation | AddClient, TState> = () => {
@@ -389,11 +472,30 @@ export function mixinNewClient<
 export function mixinReconnect<
 	TChannelFactory extends IChannelFactory,
 	TOperation extends BaseOperation,
-	TState extends DDSFuzzTestState<TChannelFactory>,
+	TState extends DDSFuzzTestState<
+		TChannelFactory,
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection
+	>,
 >(
-	model: DDSFuzzModel<TChannelFactory, TOperation, TState>,
-	options: DDSFuzzSuiteOptions,
-): DDSFuzzModel<TChannelFactory, TOperation | ChangeConnectionState, TState> {
+	model: DDSFuzzModel<
+		TChannelFactory,
+		TOperation,
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection,
+		TState
+	>,
+	options: DDSFuzzSuiteOptions<
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection
+	>,
+): DDSFuzzModel<
+	TChannelFactory,
+	TOperation | ChangeConnectionState,
+	MockContainerRuntimeFactoryForReconnection,
+	MockContainerRuntimeForReconnection,
+	TState
+> {
 	const generatorFactory: () => Generator<TOperation | ChangeConnectionState, TState> = () => {
 		const baseGenerator = model.generatorFactory();
 		return async (state): Promise<TOperation | ChangeConnectionState | typeof done> => {
@@ -439,11 +541,30 @@ export function mixinReconnect<
 export function mixinSynchronization<
 	TChannelFactory extends IChannelFactory,
 	TOperation extends BaseOperation,
-	TState extends DDSFuzzTestState<TChannelFactory>,
+	TState extends DDSFuzzTestState<
+		TChannelFactory,
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection
+	>,
 >(
-	model: DDSFuzzModel<TChannelFactory, TOperation, TState>,
-	options: DDSFuzzSuiteOptions,
-): DDSFuzzModel<TChannelFactory, TOperation | Synchronize, TState> {
+	model: DDSFuzzModel<
+		TChannelFactory,
+		TOperation,
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection,
+		TState
+	>,
+	options: DDSFuzzSuiteOptions<
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection
+	>,
+): DDSFuzzModel<
+	TChannelFactory,
+	TOperation | Synchronize,
+	MockContainerRuntimeFactoryForReconnection,
+	MockContainerRuntimeForReconnection,
+	TState
+> {
 	const { validationStrategy } = options;
 	let generatorFactory: () => Generator<TOperation | Synchronize, TState>;
 	switch (validationStrategy.type) {
@@ -518,11 +639,30 @@ const isClientSpec = (op: unknown): op is ClientSpec => (op as ClientSpec).clien
 export function mixinClientSelection<
 	TChannelFactory extends IChannelFactory,
 	TOperation extends BaseOperation,
-	TState extends DDSFuzzTestState<TChannelFactory>,
+	TState extends DDSFuzzTestState<
+		TChannelFactory,
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection
+	>,
 >(
-	model: DDSFuzzModel<TChannelFactory, TOperation, TState>,
-	_: DDSFuzzSuiteOptions,
-): DDSFuzzModel<TChannelFactory, TOperation, TState> {
+	model: DDSFuzzModel<
+		TChannelFactory,
+		TOperation,
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection,
+		TState
+	>,
+	_: DDSFuzzSuiteOptions<
+		MockContainerRuntimeFactoryForReconnection,
+		MockContainerRuntimeForReconnection
+	>,
+): DDSFuzzModel<
+	TChannelFactory,
+	TOperation,
+	MockContainerRuntimeFactoryForReconnection,
+	MockContainerRuntimeForReconnection,
+	TState
+> {
 	const generatorFactory: () => Generator<TOperation, TState> = () => {
 		const baseGenerator = model.generatorFactory();
 		return async (state): Promise<TOperation | typeof done> => {
@@ -564,6 +704,67 @@ export function mixinClientSelection<
 	};
 }
 
+/**
+ * Mixes in functionality to rebase batches in a DDS fuzz model.
+ * @privateRemarks - This is currently file-exported for testing purposes, but it could be reasonable to
+ * expose at the package level if we want to expose some of the harness's building blocks.
+ */
+export function mixinRebase<
+	TChannelFactory extends IChannelFactory,
+	TOperation extends BaseOperation,
+	TState extends DDSFuzzTestState<
+		TChannelFactory,
+		MockContainerRuntimeFactoryForRebasing,
+		MockContainerRuntimeForRebasing
+	>,
+>(
+	model: DDSFuzzModel<
+		TChannelFactory,
+		TOperation,
+		MockContainerRuntimeFactoryForRebasing,
+		MockContainerRuntimeForRebasing,
+		TState
+	>,
+	options: DDSFuzzSuiteOptions<
+		MockContainerRuntimeFactoryForRebasing,
+		MockContainerRuntimeForRebasing
+	>,
+): DDSFuzzModel<
+	TChannelFactory,
+	TOperation | TriggerRebase,
+	MockContainerRuntimeFactoryForRebasing,
+	MockContainerRuntimeForRebasing,
+	TState
+> {
+	const generatorFactory: () => Generator<TOperation | TriggerRebase, TState> = () => {
+		const baseGenerator = model.generatorFactory();
+		return async (state): Promise<TOperation | TriggerRebase | typeof done> => {
+			const baseOp = baseGenerator(state);
+			if (state.random.bool(options.rebaseProbability)) {
+				const client = state.clients.find((c) => c.channel.id === state.channel.id);
+				assert(client !== undefined);
+				return { type: "rebase" };
+			}
+
+			return baseOp;
+		};
+	};
+
+	const reducer: Reducer<TOperation | TriggerRebase, TState> = async (state, operation) => {
+		if (operation.type === "rebase") {
+			state.client.containerRuntime.rebase();
+			return state;
+		} else {
+			return model.reducer(state, operation as TOperation);
+		}
+	};
+	return {
+		...model,
+		generatorFactory,
+		reducer,
+	};
+}
+
 function makeUnreachableCodepathProxy<T extends object>(name: string): T {
 	// eslint-disable-next-line @typescript-eslint/consistent-type-assertions
 	return new Proxy({} as T, {
@@ -575,11 +776,15 @@ function makeUnreachableCodepathProxy<T extends object>(name: string): T {
 	});
 }
 
-function createClient<TChannelFactory extends IChannelFactory>(
-	containerRuntimeFactory: MockContainerRuntimeFactoryForReconnection,
+function createClient<
+	TChannelFactory extends IChannelFactory,
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+>(
+	containerRuntimeFactory: TMockContainerRuntimeFactory,
 	factory: TChannelFactory,
 	clientId: string,
-): Client<TChannelFactory> {
+): Client<TChannelFactory, TMockContainerRuntime> {
 	const dataStoreRuntime = new MockFluidDataStoreRuntime({ clientId });
 	// Note: we re-use the clientId for the channel id here despite connecting all clients to the same channel:
 	// this isn't how it would work in a real scenario, but the mocks don't use the channel id for any message
@@ -599,13 +804,20 @@ function createClient<TChannelFactory extends IChannelFactory>(
 	return { containerRuntime, channel: channel as ReturnType<TChannelFactory["create"]> };
 }
 
-async function loadClient<TChannelFactory extends IChannelFactory>(
+async function loadClient<
+	TChannelFactory extends IChannelFactory,
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+>(
 	containerRuntimeFactory: MockContainerRuntimeFactoryForReconnection,
-	summarizerClient: Client<TChannelFactory>,
+	summarizerClient: Client<TChannelFactory, TMockContainerRuntime>,
 	factory: TChannelFactory,
 	clientId: string,
-	options: Pick<DDSFuzzSuiteOptions, "emitter">,
-): Promise<Client<TChannelFactory>> {
+	options: Pick<
+		DDSFuzzSuiteOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>,
+		"emitter"
+	>,
+): Promise<Client<TChannelFactory, TMockContainerRuntime>> {
 	const { summary } = summarizerClient.channel.getAttachSummary();
 	const dataStoreRuntime = new MockFluidDataStoreRuntime({ clientId });
 	const containerRuntime = containerRuntimeFactory.createContainerRuntime(dataStoreRuntime, {
@@ -623,7 +835,7 @@ async function loadClient<TChannelFactory extends IChannelFactory>(
 		factory.attributes,
 	)) as ReturnType<TChannelFactory["create"]>;
 	channel.connect(services);
-	const newClient: Client<TChannelFactory> = {
+	const newClient: Client<TChannelFactory, TMockContainerRuntime> = {
 		channel,
 		containerRuntime,
 	};
@@ -648,19 +860,30 @@ function makeFriendlyClientId(random: IRandom, index: number): string {
 export async function runTestForSeed<
 	TChannelFactory extends IChannelFactory,
 	TOperation extends BaseOperation,
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
 >(
-	model: DDSFuzzModel<TChannelFactory, TOperation>,
-	options: Omit<DDSFuzzSuiteOptions, "only">,
+	model: DDSFuzzModel<
+		TChannelFactory,
+		TOperation,
+		TMockContainerRuntimeFactory,
+		TMockContainerRuntime
+	>,
+	options: Omit<DDSFuzzSuiteOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>, "only">,
 	seed: number,
 	saveInfo?: SaveInfo,
-): Promise<DDSFuzzTestState<TChannelFactory>> {
+): Promise<DDSFuzzTestState<TChannelFactory, TMockContainerRuntimeFactory, TMockContainerRuntime>> {
 	const random = makeRandom(seed);
 	const containerRuntimeFactory = new MockContainerRuntimeFactoryForReconnection();
-	const summarizerClient = createClient(containerRuntimeFactory, model.factory, "summarizer");
+	const summarizerClient = createClient<
+		TChannelFactory,
+		TMockContainerRuntimeFactory,
+		TMockContainerRuntime
+	>(containerRuntimeFactory, model.factory, "summarizer");
 
 	const clients = await Promise.all(
 		Array.from({ length: options.numberOfClients }, async (_, index) =>
-			loadClient(
+			loadClient<TChannelFactory, TMockContainerRuntimeFactory, TMockContainerRuntime>(
 				containerRuntimeFactory,
 				summarizerClient,
 				model.factory,
@@ -670,7 +893,11 @@ export async function runTestForSeed<
 		),
 	);
 
-	const initialState: DDSFuzzTestState<TChannelFactory> = {
+	const initialState: DDSFuzzTestState<
+		TChannelFactory,
+		TMockContainerRuntimeFactory,
+		TMockContainerRuntime
+	> = {
 		clients,
 		summarizerClient,
 		containerRuntimeFactory,
@@ -696,9 +923,19 @@ export async function runTestForSeed<
 	return finalState;
 }
 
-function runTest<TChannelFactory extends IChannelFactory, TOperation extends BaseOperation>(
-	model: DDSFuzzModel<TChannelFactory, TOperation>,
-	options: InternalOptions,
+function runTest<
+	TChannelFactory extends IChannelFactory,
+	TOperation extends BaseOperation,
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+>(
+	model: DDSFuzzModel<
+		TChannelFactory,
+		TOperation,
+		TMockContainerRuntimeFactory,
+		TMockContainerRuntime
+	>,
+	options: InternalOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>,
 	seed: number,
 	saveInfo: SaveInfo | undefined,
 ): void {
@@ -708,21 +945,40 @@ function runTest<TChannelFactory extends IChannelFactory, TOperation extends Bas
 	});
 }
 
-type InternalOptions = Omit<DDSFuzzSuiteOptions, "only"> & { only: Set<number> };
+type InternalOptions<
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+> = Omit<DDSFuzzSuiteOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>, "only"> & {
+	only: Set<number>;
+};
 
-function isInternalOptions(options: DDSFuzzSuiteOptions): options is InternalOptions {
+function isInternalOptions<
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
+>(
+	options: DDSFuzzSuiteOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>,
+): options is InternalOptions<TMockContainerRuntimeFactory, TMockContainerRuntime> {
 	return options.only instanceof Set;
 }
 
 export async function replayTest<
 	TChannelFactory extends IChannelFactory,
 	TOperation extends BaseOperation,
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
 >(
-	ddsModel: DDSFuzzModel<TChannelFactory, TOperation>,
+	ddsModel: DDSFuzzModel<
+		TChannelFactory,
+		TOperation,
+		TMockContainerRuntimeFactory,
+		TMockContainerRuntime
+	>,
 	seed: number,
 	operations: TOperation[],
 	saveInfo?: SaveInfo,
-	providedOptions?: Partial<DDSFuzzSuiteOptions>,
+	providedOptions?: Partial<
+		DDSFuzzSuiteOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>
+	>,
 ): Promise<void> {
 	const options = {
 		...defaultDDSFuzzSuiteOptions,
@@ -737,7 +993,7 @@ export async function replayTest<
 
 	const model = {
 		..._model,
-		// We lose some typesafety here because the options interface isn't generic
+		// We lose some type safety here because the options interface isn't generic
 		generatorFactory: (): Generator<TOperation, unknown> => generatorFromArray(operations),
 	};
 
@@ -750,9 +1006,18 @@ export async function replayTest<
 export function createDDSFuzzSuite<
 	TChannelFactory extends IChannelFactory,
 	TOperation extends BaseOperation,
+	TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+	TMockContainerRuntime extends MockContainerRuntime,
 >(
-	ddsModel: DDSFuzzModel<TChannelFactory, TOperation>,
-	providedOptions?: Partial<DDSFuzzSuiteOptions>,
+	ddsModel: DDSFuzzModel<
+		TChannelFactory,
+		TOperation,
+		TMockContainerRuntimeFactory,
+		TMockContainerRuntime
+	>,
+	providedOptions?: Partial<
+		DDSFuzzSuiteOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>
+	>,
 ): void {
 	const options = {
 		...defaultDDSFuzzSuiteOptions,
@@ -761,7 +1026,7 @@ export function createDDSFuzzSuite<
 
 	const only = new Set(options.only);
 	options.only = only;
-	assert(isInternalOptions(options));
+	assert(isInternalOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>(options));
 
 	const model = mixinSynchronization(
 		mixinNewClient(mixinClientSelection(mixinReconnect(ddsModel, options), options), options),
@@ -795,7 +1060,7 @@ export function createDDSFuzzSuite<
 
 				const replayModel = {
 					...model,
-					// We lose some typesafety here because the options interface isn't generic
+					// We lose some type safety here because the options interface isn't generic
 					generatorFactory: (): Generator<TOperation, unknown> =>
 						generatorFromArray(operations as TOperation[]),
 				};
@@ -816,9 +1081,21 @@ export function createDDSFuzzSuite<
  */
 createDDSFuzzSuite.only =
 	(...seeds: number[]) =>
-	<TChannelFactory extends IChannelFactory, TOperation extends BaseOperation>(
-		ddsModel: DDSFuzzModel<TChannelFactory, TOperation>,
-		providedOptions?: Partial<DDSFuzzSuiteOptions>,
+	<
+		TChannelFactory extends IChannelFactory,
+		TOperation extends BaseOperation,
+		TMockContainerRuntimeFactory extends MockContainerRuntimeFactory,
+		TMockContainerRuntime extends MockContainerRuntime,
+	>(
+		ddsModel: DDSFuzzModel<
+			TChannelFactory,
+			TOperation,
+			TMockContainerRuntimeFactory,
+			TMockContainerRuntime
+		>,
+		providedOptions?: Partial<
+			DDSFuzzSuiteOptions<TMockContainerRuntimeFactory, TMockContainerRuntime>
+		>,
 	): void =>
 		createDDSFuzzSuite(ddsModel, {
 			...providedOptions,
