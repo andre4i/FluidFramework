@@ -6,6 +6,7 @@ To see the changes in past releases, check the release in the
 [Releases](https://github.com/microsoft/FluidFramework/releases) section of our GitHub repo.
 
 # Adding breaking and upcoming change notes
+# Adding breaking and upcoming change notes
 
 Notes on breaking, upcoming, and otherwise interesting changes go here. They will be reviewed and published along with each release. Published changelogs may be found on the docs site at fluidframework.com.
 
