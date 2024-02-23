@@ -14,6 +14,7 @@ For instructions on how to communicate breaking changes please see our docs [her
 
 ## Writing a change note
 ## Writing a change note
+## Writing a change note
 
 It's important to communicate breaking changes to our stakeholders. To write a good change note, use the below guidelines. For more information, check our [wiki](https://github.com/microsoft/FluidFramework/wiki/Communicating-breaking-changes).
 
